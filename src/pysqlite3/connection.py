@@ -90,6 +90,11 @@ class Connection:
             for row_id, values in enumerate(self.row_values(table)):
                 print(f"table {table}: row {row_id + 1} =", values)
 
+        for table in self.tables:
+            for row_id, locations in enumerate(self.row_locations(table)):
+                print(f"table {table}: locations {row_id + 1} =", locations)
+                # f = open("test.db", "rb"); f.seek(8190); struct.unpack(">h", f.read(2))[0]
+
         # https://www.sqlite.org/fileformat.html
         # Serial Type Codes Of The Record Format
         type_names = [
@@ -370,4 +375,47 @@ class Connection:
                         values.append(value.value)
                 yield values
             page = None
+            # TODO read more pages when necessary
+
+    def row_locations(self, table):
+        """
+        get all row locations of a table
+
+        location = (start, size)
+
+        start is the absolute index in the database file
+
+        non-standard method
+        """
+
+        def size_of_raw_type(raw_type):
+            """
+            https://www.sqlite.org/fileformat.html
+            Serial Type Codes Of The Record Format
+            """
+            if raw_type >= 12: # string or blob
+                if raw_type % 2 == 0: # blob
+                    return (raw_type - 12) >> 1 # bitshift to keep integer type
+                return (raw_type - 13) >> 1
+            sizes = [0, 1, 2, 3, 4, 6, 8, 8, 0, 0]
+            return sizes[raw_type] # throws IndexError on invalid raw_type
+
+        page_idx = self.rootpage_num(table) - 1
+        assert page_idx != None
+        page = self._db.pages[page_idx]
+        assert page.page_type.value == 0x0D  # Table B-Tree Leaf Cell
+        while page:
+            page_position = page_idx * self._db.header.page_size
+            for cell_idx, cell in enumerate(page.cells):
+                locations = []
+                # TODO why +5? header of cell? always 5?
+                last_value_end = page_position + cell.content_offset + 5
+                for value in cell.content.payload.values:
+                    start = last_value_end
+                    size = size_of_raw_type(value.serial_type.code.value)
+                    locations.append((start, size))
+                    last_value_end += size
+                yield locations
+            page = None
+            page_idx = None
             # TODO read more pages when necessary
