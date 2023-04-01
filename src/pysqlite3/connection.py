@@ -355,7 +355,6 @@ class Connection:
 
         non-standard method
         """
-        rows = []
         page_idx = self.rootpage_num(table) - 1
         assert page_idx != None
         page = self._db.pages[page_idx]
