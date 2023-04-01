@@ -307,6 +307,8 @@ class Connection:
 
     def columns(self, table):
         """
+        get all column names of a table
+
         non-standard method
         """
         page = self._db.pages[0]
