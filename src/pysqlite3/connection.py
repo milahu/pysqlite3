@@ -263,34 +263,57 @@ class Connection:
 
     @property
     def tables(self):
-        """non-standard method"""
+        """
+        non-standard method
+
+        https://www.sqlite.org/fileformat.html
+        2.6. Storage Of The SQL Database Schema
+
+        Page 1 of a database file is the root page of a table b-tree
+        that holds a special table named "sqlite_schema".
+        This b-tree is known as the "schema table"
+        since it stores the complete database schema.
+
+        The structure of the sqlite_schema table is
+        as if it had been created using the following SQL:
+
+        CREATE TABLE sqlite_schema(
+            type text,
+            name text,
+            tbl_name text,
+            rootpage integer,
+            sql text
+        );
+
+        The sqlite_schema.tbl_name column holds the name of a table or view
+        that the object is associated with.
+        For a table or view, the tbl_name column is a copy of the name column.
+        For an index, the tbl_name is the name of the table that is indexed.
+        For a trigger, the tbl_name column stores the name of the table or view
+        that causes the trigger to fire.
+        """
         tables = []
-        for page_idx, page in enumerate(self._db.pages):
-            assert page.page_type.value == 0x0D  # Table B-Tree Leaf Cell (header 0x0d):
-            for cell_idx, cell in enumerate(page.cells):
-                values = cell.content.payload.values
-                if values[0].value.value == "table":
-                    tables.append(values[1].value.value)
-                    # tables.append(values[2].value.value) # TODO same value?
-            # stop after first page
-            # TODO read more pages when necessary
-            break
+        page = self._db.pages[0]
+        assert page.page_type.value == 0x0D  # Table B-Tree Leaf Cell
+        for cell_idx, cell in enumerate(page.cells):
+            values = cell.content.payload.values
+            if values[0].value.value == "table":
+                tables.append(values[1].value.value)
         return tables
 
     def columns(self, table):
-        """non-standard method"""
-        for page_idx, page in enumerate(self._db.pages):
-            assert page.page_type.value == 0x0D  # Table B-Tree Leaf Cell (header 0x0d):
-            for cell_idx, cell in enumerate(page.cells):
-                values = cell.content.payload.values
-                if values[0].value.value == "table" and values[1].value.value == table:
-                    sql = values[4].value.value
-                    tree = sqlglot.parse_one(sql)
-                    list(tree.find_all(sqlglot.exp.Identifier))
-                    columns = [id.name for id in tree.find_all(sqlglot.exp.Identifier)]
-                    columns.pop()  # last ID is the table name
-                    return columns
-            # stop after first page
-            # TODO read more pages when necessary
-            break
+        """
+        non-standard method
+        """
+        page = self._db.pages[0]
+        assert page.page_type.value == 0x0D  # Table B-Tree Leaf Cell
+        for cell_idx, cell in enumerate(page.cells):
+            values = cell.content.payload.values
+            if values[0].value.value == "table" and values[1].value.value == table:
+                sql = values[4].value.value
+                tree = sqlglot.parse_one(sql)
+                list(tree.find_all(sqlglot.exp.Identifier))
+                columns = [id.name for id in tree.find_all(sqlglot.exp.Identifier)]
+                columns.pop()  # last ID is the table name
+                return columns
         return None
