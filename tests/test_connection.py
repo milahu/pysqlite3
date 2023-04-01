@@ -1,7 +1,7 @@
 import os
 import sqlite3
-import pysqlite3
 
+import pysqlite3
 
 def create_test_db(database="test.db"):
     """
