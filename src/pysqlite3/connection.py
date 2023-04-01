@@ -268,6 +268,8 @@ class Connection:
     @property
     def tables(self):
         """
+        get all table names
+
         non-standard method
 
         https://www.sqlite.org/fileformat.html
