@@ -19,7 +19,7 @@ class Connection:
 
     row_factory = Row
 
-    text_factory = str # decode strings with utf8
+    text_factory = str  # decode strings with utf8
     # text_factory = bytes # keep strings as raw bytes
 
     total_changes = 0
@@ -84,10 +84,9 @@ class Connection:
                 else:
                     raise Exception(msg)
 
-        raise NotImplementedError
-
     def cursor(self, factory=Cursor):
-        raise NotImplementedError
+        cur = factory(self)
+        return cur
 
     def blobopen(self, table, column, row, /, *, readonly=False, name="main"):
         raise NotImplementedError
