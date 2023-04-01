@@ -1,5 +1,7 @@
 from .row import Row
 
+import sqlglot
+import sqlglot.executor
 
 class Cursor:
 
@@ -80,6 +82,14 @@ class Cursor:
         optionally binding Python values using placeholders.
         """
         raise NotImplementedError
+        # TODO get tables from self.connection._db, create a lazy proxy dict
+        tables = dict()
+        # https://github.com/tobymao/sqlglot/blob/main/sqlglot/executor/python.py
+        res = sqlglot.executor.execute(
+            sql,
+            tables=tables,
+        )
+        return res
 
     def executemany(self, sql, parameters, /):
         raise NotImplementedError
