@@ -79,6 +79,8 @@ class Connection:
                 else:
                     raise Exception(msg)
 
+        print("tables =", self.tables)
+
         # https://www.sqlite.org/fileformat.html
         # Serial Type Codes Of The Record Format
         type_names = [
@@ -235,3 +237,19 @@ class Connection:
 
     def deserialize(self, data, /, *, name="main"):
         raise NotImplementedError
+
+    @property
+    def tables(self):
+        """non-standard method"""
+        tables = []
+        for page_idx, page in enumerate(self._db.pages):
+            assert page.page_type.value == 0x0d # Table B-Tree Leaf Cell (header 0x0d):
+            for cell_idx, cell in enumerate(page.cells):
+                values = cell.content.payload.values
+                if values[0].value.value == "table":
+                    tables.append(values[1].value.value)
+                    #tables.append(values[2].value.value) # TODO same value?
+            # stop after first page
+            # TODO read more pages when necessary
+            break
+        return tables
