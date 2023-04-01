@@ -5,6 +5,8 @@ from .row import Row
 import os
 import math
 
+import sqlglot
+
 # TODO connection context manager
 # TODO con = sqlite3.connect(":memory:")
 # TODO shortcut methods: con.execute, etc
@@ -80,6 +82,9 @@ class Connection:
                     raise Exception(msg)
 
         print("tables =", self.tables)
+
+        for table in self.tables:
+            print(f"table {table}: columns =", self.columns(table))
 
         # https://www.sqlite.org/fileformat.html
         # Serial Type Codes Of The Record Format
@@ -271,3 +276,21 @@ class Connection:
             # TODO read more pages when necessary
             break
         return tables
+
+    def columns(self, table):
+        """non-standard method"""
+        for page_idx, page in enumerate(self._db.pages):
+            assert page.page_type.value == 0x0D  # Table B-Tree Leaf Cell (header 0x0d):
+            for cell_idx, cell in enumerate(page.cells):
+                values = cell.content.payload.values
+                if values[0].value.value == "table" and values[1].value.value == table:
+                    sql = values[4].value.value
+                    tree = sqlglot.parse_one(sql)
+                    list(tree.find_all(sqlglot.exp.Identifier))
+                    columns = [id.name for id in tree.find_all(sqlglot.exp.Identifier)]
+                    columns.pop()  # last ID is the table name
+                    return columns
+            # stop after first page
+            # TODO read more pages when necessary
+            break
+        return None
