@@ -1,0 +1,42 @@
+# https://packaging.python.org/en/latest/tutorials/packaging-projects/
+# https://doc.pytest.org/en/latest/explanation/goodpractices.html#choosing-a-test-layout-import-rules
+
+[project]
+name = "pysqlite3"
+version = "0.1"
+authors = [
+    "Milan Hauth <milahu@gmail.com>",
+]
+description = "pure-python sqlite3 client"
+readme = "readme.md"
+requires-python = ">=3.7"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+"Homepage" = "https://github.com/milahu/pysqlite3"
+"Bug Tracker" = "https://github.com/milahu/pysqlite3/issues"
+
+[build-system]
+requires = [
+    "hatchling",
+    "kaitaistruct",
+    "pytest",
+]
+build-backend = "hatchling.build"
+
+[pytest]
+testpaths = "tests"
+
+[tool.pytest.ini_options]
+addopts = [
+    "--import-mode=importlib",
+]
+# You can then install your package in "editable" mode
+# by running from the same directory:
+# pip install -e .
+# If you do not use an editable install
+pythonpath = "src"
