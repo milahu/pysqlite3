@@ -86,6 +86,10 @@ class Connection:
         for table in self.tables:
             print(f"table {table}: columns =", self.columns(table))
 
+        for table in self.tables:
+            for row_id, row in enumerate(self.rows(table)):
+                print(f"table {table}: row {row_id + 1} =", row)
+
         # https://www.sqlite.org/fileformat.html
         # Serial Type Codes Of The Record Format
         type_names = [
@@ -317,3 +321,41 @@ class Connection:
                 columns.pop()  # last ID is the table name
                 return columns
         return None
+
+    def rootpage_num(self, table):
+        """
+        get the rootpage number of a table
+
+        non-standard method
+        """
+        page = self._db.pages[0]
+        assert page.page_type.value == 0x0D  # Table B-Tree Leaf Cell
+        for cell_idx, cell in enumerate(page.cells):
+            values = cell.content.payload.values
+            if values[0].value.value == "table" and values[1].value.value == table:
+                return values[3].value
+        return None
+
+    def rows(self, table):
+        """
+        get all rows of a table
+
+        non-standard method
+        """
+        rows = []
+        page_idx = self.rootpage_num(table) - 1
+        assert page_idx != None
+        page = self._db.pages[page_idx]
+        assert page.page_type.value == 0x0D  # Table B-Tree Leaf Cell
+        while page:
+            for cell_idx, cell in enumerate(page.cells):
+                values = []
+                for value in cell.content.payload.values:
+                    if value.serial_type.value_type >= 12:
+                        # blob or string
+                        values.append(value.value.value)
+                    else:
+                        values.append(value.value)
+                yield values
+            page = None
+            # TODO read more pages when necessary
