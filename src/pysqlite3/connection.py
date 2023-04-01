@@ -351,7 +351,7 @@ class Connection:
 
     def rows(self, table):
         """
-        get all rows of a table
+        get all row values of a table
 
         non-standard method
         """
