@@ -1,0 +1,29 @@
+--- a/src/pysqlite3/parser/sqlite3.py
++++ b/src/pysqlite3/parser/sqlite3.py
+@@ -302,7 +302,15 @@ class Sqlite3(KaitaiStruct):
+             if hasattr(self, "_m_serial_type"):
+                 return self._m_serial_type
+ 
+-            self._m_serial_type = self.ser
++            # wrong: no typecast ser.as<serial>
++            # self._m_serial_type = self.ser
++            # typecast to Serial
++            # https://github.com/kaitai-io/kaitai_struct/issues/1017
++            _pos = self.ser._io.pos()
++            self.ser._io.seek(self.ser._io_init_pos)
++            self._m_serial_type = Sqlite3.Serial(self.ser._io, self.ser, self.ser._root)
++            self.ser._io.seek(_pos)
++
+             return getattr(self, "_m_serial_type", None)
+ 
+     class RefCell(KaitaiStruct):
+--- a/src/pysqlite3/parser/vlq_base128_be.py
++++ b/src/pysqlite3/parser/vlq_base128_be.py
+@@ -30,6 +30,7 @@
+ 
+     def __init__(self, _io, _parent=None, _root=None):
+         self._io = _io
++        self._io_init_pos = self._io.pos()
+         self._parent = _parent
+         self._root = _root if _root else self
+         self._read()

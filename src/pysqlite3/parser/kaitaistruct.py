@@ -27,6 +27,7 @@ API_VERSION = (0, 10)
 class KaitaiStruct(object):
     def __init__(self, stream):
         self._io = stream
+        self._io_init_pos = self._io.pos()
 
     def __enter__(self):
         return self

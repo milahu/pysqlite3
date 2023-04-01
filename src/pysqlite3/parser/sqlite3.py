@@ -303,7 +303,15 @@ class Sqlite3(KaitaiStruct):
             if hasattr(self, "_m_serial_type"):
                 return self._m_serial_type
 
-            self._m_serial_type = self.ser
+            # wrong: no typecast ser.as<serial>
+            # self._m_serial_type = self.ser
+            # typecast to Serial
+            # https://github.com/kaitai-io/kaitai_struct/issues/1017
+            _pos = self.ser._io.pos()
+            self.ser._io.seek(self.ser._io_init_pos)
+            self._m_serial_type = Sqlite3.Serial(self.ser._io, self.ser, self.ser._root)
+            self.ser._io.seek(_pos)
+
             return getattr(self, "_m_serial_type", None)
 
     class RefCell(KaitaiStruct):

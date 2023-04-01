@@ -20,3 +20,7 @@ sed -i '
     s/^import kaitaistruct$/from . import kaitaistruct/;
     s/^from kaitaistruct import/from .kaitaistruct import/;
 ' *.py
+
+# fix typecast
+# https://github.com/kaitai-io/kaitai_struct/issues/1017
+patch -p4 < fix-typecast.patch
