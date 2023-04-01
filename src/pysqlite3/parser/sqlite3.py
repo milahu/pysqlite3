@@ -120,21 +120,33 @@ class Sqlite3(KaitaiStruct):
                     self._io, self, self._root
                 )
 
+            print() # debug
             self.page_type = KaitaiStream.resolve_enum(
                 Sqlite3.BtreePageType, self._io.read_u1()
             )
+            print("BtreePage.page_type", self.page_type) # debug
             self.first_freeblock = self._io.read_u2be()
             self.cell_count = self._io.read_u2be()
+            print("BtreePage.cell_count", self.cell_count) # debug
             self.cell_content_area_start_raw = self._io.read_u2be()
             self.num_frag_free_bytes = self._io.read_u1()
             if (self.page_type == Sqlite3.BtreePageType.index_interior) or (
                 self.page_type == Sqlite3.BtreePageType.table_interior
             ):
                 self.right_ptr = Sqlite3.BtreePagePointer(self._io, self, self._root)
+                print("BtreePage.right_ptr", self.right_ptr) # debug
 
             self.cells = []
+            #print("BtreePage.cells +=", end="") # debug
             for i in range(self.cell_count):
-                self.cells.append(Sqlite3.CellPointer(self._io, self, self._root))
+                #print(" " + str(i), end="") # debug
+                #self.cells.append(Sqlite3.CellPointer(self._io, self, self._root))
+                try:
+                    self.cells.append(Sqlite3.CellPointer(self._io, self, self._root))
+                except EOFError as err:
+                    print() # debug
+                    print(f"crashed at i={i} of cell_count={self.cell_count}")
+                    raise err
 
         @property
         def call_content_area_start(self):

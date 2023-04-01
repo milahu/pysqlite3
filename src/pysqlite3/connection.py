@@ -225,7 +225,7 @@ class Connection:
         that causes the trigger to fire.
         """
         tables = []
-        page = self._db.pages[0]
+        page = self._db.pages[0] # FIXME this fails on large datbase
         assert page.page_type.value == 0x0D  # Table B-Tree Leaf Cell
         for cell_idx, cell in enumerate(page.cells):
             values = cell.content.payload.values
