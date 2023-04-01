@@ -1,3 +1,4 @@
+import os
 import sqlite3
 import pysqlite3
 
@@ -6,6 +7,10 @@ def create_test_db(database="test.db"):
     """
     use the native sqlite3 module to create the test database
     """
+    try:
+        os.unlink(database)
+    except FileNotFoundError:
+        pass
     con = sqlite3.connect(database)
     cur = con.cursor()
     cur.execute("CREATE TABLE IF NOT EXISTS lang(name, first_appeared)")
