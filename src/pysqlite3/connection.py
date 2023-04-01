@@ -87,8 +87,8 @@ class Connection:
             print(f"table {table}: columns =", self.columns(table))
 
         for table in self.tables:
-            for row_id, row in enumerate(self.rows(table)):
-                print(f"table {table}: row {row_id + 1} =", row)
+            for row_id, values in enumerate(self.row_values(table)):
+                print(f"table {table}: row {row_id + 1} =", values)
 
         # https://www.sqlite.org/fileformat.html
         # Serial Type Codes Of The Record Format
@@ -349,7 +349,7 @@ class Connection:
                 return values[3].value
         return None
 
-    def rows(self, table):
+    def row_values(self, table):
         """
         get all row values of a table
 
