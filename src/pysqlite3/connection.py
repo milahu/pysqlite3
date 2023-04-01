@@ -28,6 +28,50 @@ class Connection:
 
     _db = None
 
+    # https://www.sqlite.org/fileformat.html
+    # Serial Type Codes Of The Record Format
+    _type_names = [
+        "null",
+        # big-endian twos-complement integers
+        "int8",
+        "int16",
+        "int24",
+        "int32",
+        "int48",
+        "int64",
+        # big-endian IEEE 754-2008 64-bit floating point number
+        "float64",
+        # the integer 0. (Only available for schema format 4 and higher.)
+        # aka "false"?
+        "int0",
+        # the integer 1. (Only available for schema format 4 and higher.)
+        # aka "true"?
+        "int1",
+        # Reserved for internal use
+        "internal10",
+        "internal11",
+        # Value is a BLOB that is (N-12)/2 bytes in length.
+        "blob",
+        # Value is a string in the text encoding and (N-13)/2 bytes in length.
+        # The nul terminator is not stored.
+        "string",
+    ]
+
+    _type_null = 0
+    _type_int8 = 1
+    _type_int16 = 2
+    _type_int24 = 3
+    _type_int32 = 4
+    _type_int48 = 5
+    _type_int64 = 6
+    _type_float64 = 7
+    _type_int0 = 8
+    _type_int1 = 9
+    _type_internal10 = 10
+    _type_internal11 = 11
+    _type_blob = 12
+    _type_string = 13
+
     def __init__(
         self,
         database,
@@ -51,13 +95,6 @@ class Connection:
         db = parser_sqlite3.Sqlite3.from_file(database)
         self._db = db
 
-        # debug
-        print(f"page size: {db.header.page_size} bytes")
-        print(
-            f"db size: {db.header.page_count} pages",
-        )
-        print()
-
         # page size
         # Must be a power of two between 512 and 32768 inclusive,
         # or the value 1 representing a page size of 65536.
@@ -80,122 +117,6 @@ class Connection:
                     print(f"warning: {msg}")
                 else:
                     raise Exception(msg)
-
-        print("tables =", self.tables)
-
-        for table in self.tables:
-            print(f"table {table}: columns =", self.columns(table))
-
-        for table in self.tables:
-            for row_id, values in enumerate(self.row_values(table)):
-                print(f"table {table}: row {row_id + 1} =", values)
-
-        for table in self.tables:
-            for row_id, locations in enumerate(self.row_locations(table)):
-                print(f"table {table}: locations {row_id + 1} =", locations)
-                # f = open("test.db", "rb"); f.seek(8190); struct.unpack(">h", f.read(2))[0]
-
-        # https://www.sqlite.org/fileformat.html
-        # Serial Type Codes Of The Record Format
-        type_names = [
-            "null",
-            # big-endian twos-complement integers
-            "int8",
-            "int16",
-            "int24",
-            "int32",
-            "int48",
-            "int64",
-            # big-endian IEEE 754-2008 64-bit floating point number
-            "float64",
-            # the integer 0. (Only available for schema format 4 and higher.)
-            # aka "false"?
-            "int0",
-            # the integer 1. (Only available for schema format 4 and higher.)
-            # aka "true"?
-            "int1",
-            # Reserved for internal use
-            "internal10",
-            "internal11",
-            # Value is a BLOB that is (N-12)/2 bytes in length.
-            "blob",
-            # Value is a string in the text encoding and (N-13)/2 bytes in length.
-            # The nul terminator is not stored.
-            "string",
-        ]
-
-        type_null = 0
-        type_int8 = 1
-        type_int16 = 2
-        type_int24 = 3
-        type_int32 = 4
-        type_int48 = 5
-        type_int64 = 6
-        type_float64 = 7
-        type_int0 = 8
-        type_int1 = 9
-        type_internal10 = 10
-        type_internal11 = 11
-        type_blob = 12
-        type_string = 13
-
-        for page_idx, page in enumerate(db.pages):
-            page_position = page_idx * db.header.page_size
-            print(f"db.pages[{page_idx}] position = {page_position}")
-            assert page.page_type.value == 0x0D  # Table B-Tree Leaf Cell (header 0x0d):
-            for cell_idx, cell in enumerate(page.cells):
-                print(
-                    f"db.pages[{page_idx}].cells[{cell_idx}].content.row_id.value =",
-                    cell.content.row_id.value,
-                )
-                # content_offset is relative to page
-                print(
-                    f"db.pages[{page_idx}].cells[{cell_idx}].content_offset =",
-                    cell.content_offset,
-                )
-                payload_size = cell.content.p.value
-                # payload.header.value_types looks rather useless...?
-                # for value_type_idx, value_type in enumerate(cell.content.payload.header.value_types):
-                if False:
-                    # print(f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.header.value_types[{value_type_idx}].value_type =", type_names[value_type.value_type])
-                    # if value_type.content_size != None:
-                    #    print(f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.header.value_types[{value_type_idx}].content_size =", value_type.content_size)
-                    if value_type.value_type == type_string:
-                        print(
-                            f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.header.value_types[{value_type_idx}].value.value = {repr(value_type.value.value)}"
-                        )
-                    elif value_type.value_type == type_blob:
-                        # TODO verify
-                        print(
-                            f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.header.value_types[{value_type_idx}].value.value = {repr(value_type.value.value)}"
-                        )
-                    else:
-                        # TODO verify
-                        print(
-                            f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.header.value_types[{value_type_idx}].value = {repr(value_type.value)}"
-                        )
-                for value_idx, value in enumerate(cell.content.payload.values):
-                    # print(f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.values[{value_idx}].serial_type.value_type = {type_names[value.serial_type.value_type]}")
-                    # if value.serial_type.content_size != None:
-                    #    print(f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.values[{value_idx}].serial_type.content_size = {value.serial_type.content_size}")
-                    if value.serial_type.value_type == type_string:
-                        print(
-                            f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.values[{value_idx}].value.value = {repr(value.value.value)}"
-                        )
-                    elif value.serial_type.value_type == type_blob:
-                        # TODO verify
-                        print(
-                            f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.values[{value_idx}].value.value = {repr(value.value.value)}"
-                        )
-                    else:
-                        # TODO verify
-                        print(
-                            f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.values[{value_idx}].value = {repr(value.value)}"
-                        )
-                print()
-            # break # debug: stop after first page
-        raise SystemExit
-        raise NotImplementedError
 
     def cursor(self, factory=Cursor):
         cur = factory(self)
@@ -271,7 +192,7 @@ class Connection:
         raise NotImplementedError
 
     @property
-    def tables(self):
+    def _tables(self):
         """
         get all table names
 
@@ -312,7 +233,7 @@ class Connection:
                 tables.append(values[1].value.value)
         return tables
 
-    def columns(self, table):
+    def _columns(self, table):
         """
         get all column names of a table
 
@@ -331,7 +252,7 @@ class Connection:
                 return columns
         return None
 
-    def column_types(self, table):
+    def _column_types(self, table):
         """
         get all column types of a table
 
@@ -340,7 +261,7 @@ class Connection:
         raise NotImplementedError
         # TODO parse sql in self._db.pages[0]
 
-    def rootpage_num(self, table):
+    def _rootpage_num(self, table):
         """
         get the rootpage number of a table
 
@@ -354,13 +275,13 @@ class Connection:
                 return values[3].value
         return None
 
-    def row_values(self, table):
+    def _row_values(self, table):
         """
         get all row values of a table
 
         non-standard method
         """
-        page_idx = self.rootpage_num(table) - 1
+        page_idx = self._rootpage_num(table) - 1
         assert page_idx != None
         page = self._db.pages[page_idx]
         assert page.page_type.value == 0x0D  # Table B-Tree Leaf Cell
@@ -377,7 +298,19 @@ class Connection:
             page = None
             # TODO read more pages when necessary
 
-    def row_locations(self, table):
+    def _size_of_raw_type(self, raw_type):
+        """
+        https://www.sqlite.org/fileformat.html
+        Serial Type Codes Of The Record Format
+        """
+        if raw_type >= 12: # string or blob
+            if raw_type % 2 == 0: # blob
+                return (raw_type - 12) >> 1 # bitshift to keep integer type
+            return (raw_type - 13) >> 1
+        sizes = [0, 1, 2, 3, 4, 6, 8, 8, 0, 0]
+        return sizes[raw_type] # throws IndexError on invalid raw_type
+
+    def _row_locations(self, table):
         """
         get all row locations of a table
 
@@ -387,20 +320,7 @@ class Connection:
 
         non-standard method
         """
-
-        def size_of_raw_type(raw_type):
-            """
-            https://www.sqlite.org/fileformat.html
-            Serial Type Codes Of The Record Format
-            """
-            if raw_type >= 12: # string or blob
-                if raw_type % 2 == 0: # blob
-                    return (raw_type - 12) >> 1 # bitshift to keep integer type
-                return (raw_type - 13) >> 1
-            sizes = [0, 1, 2, 3, 4, 6, 8, 8, 0, 0]
-            return sizes[raw_type] # throws IndexError on invalid raw_type
-
-        page_idx = self.rootpage_num(table) - 1
+        page_idx = self._rootpage_num(table) - 1
         assert page_idx != None
         page = self._db.pages[page_idx]
         assert page.page_type.value == 0x0D  # Table B-Tree Leaf Cell
@@ -412,7 +332,7 @@ class Connection:
                 last_value_end = page_position + cell.content_offset + 5
                 for value in cell.content.payload.values:
                     start = last_value_end
-                    size = size_of_raw_type(value.serial_type.code.value)
+                    size = self._size_of_raw_type(value.serial_type.code.value)
                     locations.append((start, size))
                     last_value_end += size
                 yield locations

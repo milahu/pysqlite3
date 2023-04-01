@@ -39,6 +39,87 @@ def test_connection():
     con = pysqlite3.connect("test.db")
     # con = pysqlite3.connect(":memory:")
 
+    print(f"page size: {con._db.header.page_size} bytes")
+    print(
+        f"db size: {con._db.header.page_count} pages",
+    )
+
+    print("tables =", con._tables)
+
+    for table in con._tables:
+        print(f"table {table}: columns =", con._columns(table))
+
+    for table in con._tables:
+        for row_id, values in enumerate(con._row_values(table)):
+            print(f"table {table}: row {row_id + 1} =", values)
+
+    for table in con._tables:
+        for row_id, locations in enumerate(con._row_locations(table)):
+            print(f"table {table}: locations {row_id + 1} =", locations)
+            # f = open("test.con., "rb"); f.seek(8190); struct.unpack(">h", f.read(2))[0]
+
+    db = con._db
+
+    #for page_idx, page in enumerate(db.pages):
+    if False:
+        page_position = page_idx * db.header.page_size
+        print(f"db.pages[{page_idx}] position = {page_position}")
+        assert page.page_type.value == 0x0D  # Table B-Tree Leaf Cell (header 0x0d):
+        for cell_idx, cell in enumerate(page.cells):
+            print(
+                f"db.pages[{page_idx}].cells[{cell_idx}].content.row_id.value =",
+                cell.content.row_id.value,
+            )
+            # content_offset is relative to page
+            print(
+                f"db.pages[{page_idx}].cells[{cell_idx}].content_offset =",
+                cell.content_offset,
+            )
+            payload_size = cell.content.p.value
+            # payload.header.value_types looks rather useless...?
+            # for value_type_idx, value_type in enumerate(cell.content.payload.header.value_types):
+            if False:
+                # print(f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.header.value_types[{value_type_idx}].value_type =", con._type_names[value_type.value_type])
+                # if value_type.content_size != None:
+                #    print(f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.header.value_types[{value_type_idx}].content_size =", value_type.content_size)
+                if value_type.value_type == con._type_string:
+                    print(
+                        f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.header.value_types[{value_type_idx}].value.value = {repr(value_type.value.value)}"
+                    )
+                elif value_type.value_type == con._type_blob:
+                    # TODO verify
+                    print(
+                        f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.header.value_types[{value_type_idx}].value.value = {repr(value_type.value.value)}"
+                    )
+                else:
+                    # TODO verify
+                    print(
+                        f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.header.value_types[{value_type_idx}].value = {repr(value_type.value)}"
+                    )
+            for value_idx, value in enumerate(cell.content.payload.values):
+                # print(f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.values[{value_idx}].serial_type.value_type = {con._type_names[value.serial_type.value_type]}")
+                # if value.serial_type.content_size != None:
+                #    print(f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.values[{value_idx}].serial_type.content_size = {value.serial_type.content_size}")
+                if value.serial_type.value_type == con._type_string:
+                    print(
+                        f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.values[{value_idx}].value.value = {repr(value.value.value)}"
+                    )
+                elif value.serial_type.value_type == con._type_blob:
+                    # TODO verify
+                    print(
+                        f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.values[{value_idx}].value.value = {repr(value.value.value)}"
+                    )
+                else:
+                    # TODO verify
+                    print(
+                        f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.values[{value_idx}].value = {repr(value.value)}"
+                    )
+            print()
+        # break # debug: stop after first page
+
+    #raise SystemExit
+    raise NotImplementedError
+
     cur = con.cursor()
 
     """
