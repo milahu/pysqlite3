@@ -128,40 +128,58 @@ class Connection:
         for page_idx, page in enumerate(db.pages):
             page_position = page_idx * db.header.page_size
             print(f"db.pages[{page_idx}] position = {page_position}")
-            assert page.page_type.value == 0x0d # Table B-Tree Leaf Cell (header 0x0d):
+            assert page.page_type.value == 0x0D  # Table B-Tree Leaf Cell (header 0x0d):
             for cell_idx, cell in enumerate(page.cells):
-                print(f"db.pages[{page_idx}].cells[{cell_idx}].content.row_id.value =", cell.content.row_id.value)
+                print(
+                    f"db.pages[{page_idx}].cells[{cell_idx}].content.row_id.value =",
+                    cell.content.row_id.value,
+                )
                 # content_offset is relative to page
-                print(f"db.pages[{page_idx}].cells[{cell_idx}].content_offset =", cell.content_offset)
+                print(
+                    f"db.pages[{page_idx}].cells[{cell_idx}].content_offset =",
+                    cell.content_offset,
+                )
                 payload_size = cell.content.p.value
                 # payload.header.value_types looks rather useless...?
-                #for value_type_idx, value_type in enumerate(cell.content.payload.header.value_types):
+                # for value_type_idx, value_type in enumerate(cell.content.payload.header.value_types):
                 if False:
-                    #print(f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.header.value_types[{value_type_idx}].value_type =", type_names[value_type.value_type])
-                    #if value_type.content_size != None:
+                    # print(f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.header.value_types[{value_type_idx}].value_type =", type_names[value_type.value_type])
+                    # if value_type.content_size != None:
                     #    print(f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.header.value_types[{value_type_idx}].content_size =", value_type.content_size)
                     if value_type.value_type == type_string:
-                        print(f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.header.value_types[{value_type_idx}].value.value = {repr(value_type.value.value)}")
+                        print(
+                            f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.header.value_types[{value_type_idx}].value.value = {repr(value_type.value.value)}"
+                        )
                     elif value_type.value_type == type_blob:
                         # TODO verify
-                        print(f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.header.value_types[{value_type_idx}].value.value = {repr(value_type.value.value)}")
+                        print(
+                            f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.header.value_types[{value_type_idx}].value.value = {repr(value_type.value.value)}"
+                        )
                     else:
                         # TODO verify
-                        print(f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.header.value_types[{value_type_idx}].value = {repr(value_type.value)}")
+                        print(
+                            f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.header.value_types[{value_type_idx}].value = {repr(value_type.value)}"
+                        )
                 for value_idx, value in enumerate(cell.content.payload.values):
-                    #print(f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.values[{value_idx}].serial_type.value_type = {type_names[value.serial_type.value_type]}")
-                    #if value.serial_type.content_size != None:
+                    # print(f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.values[{value_idx}].serial_type.value_type = {type_names[value.serial_type.value_type]}")
+                    # if value.serial_type.content_size != None:
                     #    print(f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.values[{value_idx}].serial_type.content_size = {value.serial_type.content_size}")
                     if value.serial_type.value_type == type_string:
-                        print(f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.values[{value_idx}].value.value = {repr(value.value.value)}")
+                        print(
+                            f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.values[{value_idx}].value.value = {repr(value.value.value)}"
+                        )
                     elif value.serial_type.value_type == type_blob:
                         # TODO verify
-                        print(f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.values[{value_idx}].value.value = {repr(value.value.value)}")
+                        print(
+                            f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.values[{value_idx}].value.value = {repr(value.value.value)}"
+                        )
                     else:
                         # TODO verify
-                        print(f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.values[{value_idx}].value = {repr(value.value)}")
+                        print(
+                            f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.values[{value_idx}].value = {repr(value.value)}"
+                        )
                 print()
-            #break # debug: stop after first page
+            # break # debug: stop after first page
         raise SystemExit
         raise NotImplementedError
 
@@ -243,12 +261,12 @@ class Connection:
         """non-standard method"""
         tables = []
         for page_idx, page in enumerate(self._db.pages):
-            assert page.page_type.value == 0x0d # Table B-Tree Leaf Cell (header 0x0d):
+            assert page.page_type.value == 0x0D  # Table B-Tree Leaf Cell (header 0x0d):
             for cell_idx, cell in enumerate(page.cells):
                 values = cell.content.payload.values
                 if values[0].value.value == "table":
                     tables.append(values[1].value.value)
-                    #tables.append(values[2].value.value) # TODO same value?
+                    # tables.append(values[2].value.value) # TODO same value?
             # stop after first page
             # TODO read more pages when necessary
             break

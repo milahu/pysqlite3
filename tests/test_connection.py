@@ -3,6 +3,7 @@ import sqlite3
 
 import pysqlite3
 
+
 def create_test_db(database="test.db"):
     """
     use the native sqlite3 module to create the test database

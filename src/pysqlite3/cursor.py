@@ -3,6 +3,7 @@ from .row import Row
 import sqlglot
 import sqlglot.executor
 
+
 class Cursor:
 
     """
