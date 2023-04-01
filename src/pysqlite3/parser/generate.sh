@@ -14,3 +14,9 @@ $ksc -t python --python-package . sqlite3.ksy
 
 # reformat python files
 black .
+
+# use local kaitaistruct.py
+sed -i '
+    s/^import kaitaistruct$/from . import kaitaistruct/;
+    s/^from kaitaistruct import/from .kaitaistruct import/;
+' *.py
