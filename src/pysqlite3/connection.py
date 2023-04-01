@@ -326,6 +326,15 @@ class Connection:
                 return columns
         return None
 
+    def column_types(self, table):
+        """
+        get all column types of a table
+
+        non-standard method
+        """
+        raise NotImplementedError
+        # TODO parse sql in self._db.pages[0]
+
     def rootpage_num(self, table):
         """
         get the rootpage number of a table
