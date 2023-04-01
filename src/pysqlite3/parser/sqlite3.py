@@ -293,9 +293,10 @@ class Sqlite3(KaitaiStruct):
             if self.serial_type.is_blob:
                 self.as_blob = self._io.read_bytes(self.serial_type.len_content)
 
-            self.as_str = (self._io.read_bytes(self.serial_type.len_content)).decode(
-                "UTF-8"
-            )
+            if self.serial_type.is_string:
+                self.as_str = (
+                    self._io.read_bytes(self.serial_type.len_content)
+                ).decode("UTF-8")
 
         @property
         def serial_type(self):
