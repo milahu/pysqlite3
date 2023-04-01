@@ -50,31 +50,26 @@ class Connection:
         self._db = db
 
         # debug
-        print(f"page size: {db.len_page} bytes")
+        print(f"page size: {db.header.page_size} bytes")
         print(
-            f"db size: {db.num_pages} pages",
+            f"db size: {db.header.page_count} pages",
         )
+        print()
 
         # page size
         # Must be a power of two between 512 and 32768 inclusive,
         # or the value 1 representing a page size of 65536.
-        if db.len_page == 1:
-            # FIXME db.len_page is read-only
-            # db.len_page = 12345 # -> AttributeError: can't set attribute 'len_page'
-            # db.len_page = 65536
-            raise Exception("not implemented: db.len_page == 1")
-        else:
-            # validate page size
-            page_size_base = math.log(db.len_page, 2)
-            if int(page_size_base) != page_size_base:
-                raise Exception(f"page size must be a power of 2: {db.len_page}")
-            if db.len_page < 512 or 32768 < db.len_page:
-                raise Exception(
-                    f"page size must be in range (512, 32768): {db.len_page}"
-                )
+        # validate page size
+        page_size_base = math.log(db.header.page_size, 2)
+        if int(page_size_base) != page_size_base:
+            raise Exception(f"page size must be a power of 2: {db.header.page_size}")
+        if db.header.page_size < 512 or 32768 < db.header.page_size:
+            raise Exception(
+                f"page size must be in range (512, 32768): {db.header.page_size}"
+            )
 
         if database != ":memory:":
-            expected_size = db.len_page * db.num_pages
+            expected_size = db.header.page_size * db.header.page_count
             actual_size = os.path.getsize(database)
             if actual_size != expected_size:
                 # this is a fatal error in the original implementation
@@ -83,6 +78,82 @@ class Connection:
                     print(f"warning: {msg}")
                 else:
                     raise Exception(msg)
+
+        # https://www.sqlite.org/fileformat.html
+        # Serial Type Codes Of The Record Format
+        type_names = [
+            "null",
+            # big-endian twos-complement integers
+            "int8",
+            "int16",
+            "int24",
+            "int32",
+            "int48",
+            "int64",
+            # big-endian IEEE 754-2008 64-bit floating point number
+            "float64",
+            # the integer 0. (Only available for schema format 4 and higher.)
+            # aka "false"?
+            "int0",
+            # the integer 1. (Only available for schema format 4 and higher.)
+            # aka "true"?
+            "int1",
+            # Reserved for internal use
+            "internal10",
+            "internal11",
+            # Value is a BLOB that is (N-12)/2 bytes in length.
+            "blob",
+            # Value is a string in the text encoding and (N-13)/2 bytes in length.
+            # The nul terminator is not stored.
+            "string",
+        ]
+
+        type_null = 0
+        type_int8 = 1
+        type_int16 = 2
+        type_int24 = 3
+        type_int32 = 4
+        type_int48 = 5
+        type_int64 = 6
+        type_float64 = 7
+        type_int0 = 8
+        type_int1 = 9
+        type_internal10 = 10
+        type_internal11 = 11
+        type_blob = 12
+        type_string = 13
+
+        for page_idx, page in enumerate(db.pages):
+            page_position = page_idx * db.header.page_size
+            print(f"db.pages[{page_idx}] position = {page_position}")
+            assert page.page_type.value == 0x0d # Table B-Tree Leaf Cell (header 0x0d):
+            for cell_idx, cell in enumerate(page.cells):
+                print(f"db.pages[{page_idx}].cells[{cell_idx}].content.row_id.value =", cell.content.row_id.value)
+                # content_offset is relative to page
+                print(f"db.pages[{page_idx}].cells[{cell_idx}].content_offset =", cell.content_offset)
+                payload_size = cell.content.p.value
+                for value_type_idx, value_type in enumerate(cell.content.payload.header.value_types):
+                    print(f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.header.value_types[{value_type_idx}].value_type =", type_names[value_type.value_type])
+                    if value_type.content_size != None:
+                        print(f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.header.value_types[{value_type_idx}].content_size =", value_type.content_size)
+                    print()
+                for value_idx, value in enumerate(cell.content.payload.values):
+                    print(f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.values[{value_idx}].serial_type.value_type = {type_names[value.serial_type.value_type]}")
+                    if value.serial_type.content_size != None:
+                        print(f"db.pages[{page_idx}].cells[{cell_idx}].content.payload.values[{value_idx}].serial_type.content_size = {value.serial_type.content_size}")
+                    if value.serial_type.value_type == type_string:
+                        print(f"value[{value_idx}].value.value = {value.value.value}")
+                    elif value.serial_type.value_type == type_blob:
+                        # TODO verify
+                        print(f"value[{value_idx}].value.value = {value.value.value}")
+                    else:
+                        # TODO verify
+                        print(f"value[{value_idx}].value = {value.value}")
+                    print()
+                print()
+            #break # debug: stop after first page
+        raise SystemExit
+        raise NotImplementedError
 
     def cursor(self, factory=Cursor):
         cur = factory(self)
