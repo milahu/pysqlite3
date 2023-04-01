@@ -14,12 +14,21 @@ def create_test_db(database="test.db"):
         pass
     con = sqlite3.connect(database)
     cur = con.cursor()
+
     cur.execute("CREATE TABLE IF NOT EXISTS lang(name, first_appeared)")
     data = [
         ("C++", 1985),
         ("Objective-C", 1984),
     ]
     cur.executemany("INSERT INTO lang(name, first_appeared) VALUES(?, ?)", data)
+
+    # TODO set column types
+    cur.execute("CREATE TABLE IF NOT EXISTS table2(column1, column2)")
+    data = []
+    for i in range(1, 10 + 1):
+        data.append((f"row{i}_column1", f"row{i}_column2"))
+    cur.executemany("INSERT INTO table2(column1, column2) VALUES(?, ?)", data)
+
     con.commit()
     con.close()
 
