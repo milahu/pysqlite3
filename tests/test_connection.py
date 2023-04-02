@@ -44,9 +44,9 @@ def test_connection():
         f"db size: {con._db.header.num_pages} pages",
     )
     # FIXME "index" should be "number" because it is 1-based (?)
-    print(f"lock_byte_page_index: {con._db.header.lock_byte_page_index}")
-    print(f"first_ptrmap_page_index: {con._db.header.first_ptrmap_page_index}")
-    print(f"last_ptrmap_page_index: {con._db.header.last_ptrmap_page_index}")
+    print(f"idx_lock_byte_page: {con._db.header.idx_lock_byte_page}")
+    print(f"idx_first_ptrmap_page: {con._db.header.idx_first_ptrmap_page}")
+    print(f"idx_last_ptrmap_page: {con._db.header.idx_last_ptrmap_page}")
 
     print(f"con._db.pages =", con._db.pages)
     print(f"len(con._db.pages) =", len(con._db.pages))

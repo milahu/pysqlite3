@@ -331,7 +331,7 @@ class Connection:
                     # CellPointer
                     print("con._row_values: cell", cell, dir(cell))
                     # int
-                    print("con._row_values: cell.content_offset", cell.content_offset)
+                    print("con._row_values: cell.ofs_content", cell.ofs_content)
                     # cell.content is TableInteriorCell
                     # Interior pages of table b-trees have no payload
                     print("con._row_values: cell.content", cell.content, dir(cell.content))
@@ -361,7 +361,7 @@ class Connection:
                     raise NotImplementedError
                     values = []
                     for value in cell.content.payload.values:
-                        if value.serial_type.value_type >= 12:
+                        if value.serial_type.type.value >= 12:
                             # blob or string
                             values.append(value.value.value)
                         else:
@@ -429,7 +429,7 @@ class Connection:
                 for cell_idx, cell in enumerate(page.body.cells):
                     locations = []
                     # TODO why +5? header of cell? always 5?
-                    last_value_end = page_position + cell.content_offset + 5
+                    last_value_end = page_position + cell.ofs_content + 5
                     for value in cell.content.payload.values:
                         start = last_value_end
                         size = self._size_of_raw_type(value.serial_type.raw_value.value)
