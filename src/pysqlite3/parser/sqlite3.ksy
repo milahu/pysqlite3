@@ -27,9 +27,10 @@ doc: |
   versions, size of page, etc). After the header, normal contents of
   the first page follow.
 
-  Each page would be of some type, and generally, they would be
-  reached via the links starting from the first page. First page type
-  (`root_page`) is always "btree_page".
+  Each page would be of some type (btree, ptrmap, lock_byte, or free),
+  and generally, they would be reached via the links starting from the
+  first page. The first page is always a btree page for the implicitly
+  defined `sqlite_schema` table.
 doc-ref: https://www.sqlite.org/fileformat.html
 seq:
   - id: header
@@ -48,7 +49,7 @@ instances:
     pos: 0
     size: header.page_size
     repeat: expr
-    repeat-expr: header.page_count
+    repeat-expr: header.num_pages
 types:
   database_header:
     seq:
@@ -68,7 +69,7 @@ types:
         type: u1
         enum: format_version
         doc: File format read version
-      - id: reserved_space
+      - id: page_reserved_space_size
         type: u1
         doc: Bytes of unused "reserved" space at the end of each page. Usually 0.
       - id: max_payload_fraction
@@ -82,13 +83,13 @@ types:
         doc: Leaf payload fraction. Must be 32.
       - id: file_change_counter
         type: u4
-      - id: page_count
+      - id: num_pages
         type: u4
         doc: Size of the database file in pages. The "in-header database size".
       - id: first_freelist_trunk_page
         type: freelist_trunk_page_pointer
         doc: Page number of the first freelist trunk page.
-      - id: freelist_page_count
+      - id: num_freelist_pages
         type: u4
         doc: Total number of freelist pages.
       - id: schema_cookie
@@ -114,7 +115,7 @@ types:
       - id: application_id
         type: u4
         doc: The "Application ID" set by PRAGMA application_id.
-      - id: reserved
+      - id: reserved_header_bytes
         size: 20
       - id: version_valid_for
         type: u4
@@ -125,30 +126,30 @@ types:
         value: 'page_size_raw == 1 ? 0x10000 : page_size_raw'
         doc: The database page size in bytes
       usable_size:
-        value: 'page_size - reserved_space'
+        value: 'page_size - page_reserved_space_size'
         doc: The "usable size" of a database page
-      m:
+      overflow_min_payload_size:
         value: ((usable_size-12)*32/255)-23
         doc: The minimum amount of inline b-tree cell payload
-      table_x:
+      table_max_overflow_payload_size:
         value: usable_size - 35
         doc: The maximum amount of inline table b-tree cell payload
-      index_x:
+      index_max_overflow_payload_size:
         value: ((usable_size-12)*64/255)-23
         doc: The maximum amount of inline index b-tree cell payload
       lock_byte_page_index:
         value: '1073741824 / page_size'
-      j:
+      ptrmap_max_num_entries:
         value: usable_size/5
         doc: The number of ptrmap entries per ptrmap page
       first_ptrmap_page_index:
         value: 'largest_root_page > 0 ? 1 : 0'
         doc: The index (0-based) of the first ptrmap page
-      ptrmap_page_count:
-        value: 'first_ptrmap_page_index > 0 ? (page_count / j) + 1 : 0'
+      num_ptrmap_pages:
+        value: 'first_ptrmap_page_index > 0 ? (num_pages / ptrmap_max_num_entries) + 1 : 0'
         doc: The number of ptrmap pages in the database
       last_ptrmap_page_index:
-        value: 'first_ptrmap_page_index + ptrmap_page_count - (first_ptrmap_page_index + ptrmap_page_count >= lock_byte_page_index ? 0 : 1)'
+        value: 'first_ptrmap_page_index + num_ptrmap_pages - (first_ptrmap_page_index + num_ptrmap_pages >= lock_byte_page_index ? 0 : 1)'
         doc: The index (0-based) of the last ptrmap page (inclusive)
   lock_byte_page:
     params:
@@ -170,14 +171,14 @@ types:
       - id: entries
         type: ptrmap_entry
         repeat: expr
-        repeat-expr: entry_count
+        repeat-expr: num_entries
     instances:
       first_page:
-        value: '3 + (_root.header.j * (page_number - 2))'
+        value: '3 + (_root.header.ptrmap_max_num_entries * (page_number - 2))'
       last_page:
-        value: 'first_page + _root.header.j - 1'
-      entry_count:
-        value: '(last_page > _root.header.page_count ? _root.header.page_count : last_page) - first_page + 1'
+        value: 'first_page + _root.header.ptrmap_max_num_entries - 1'
+      num_entries:
+        value: '(last_page > _root.header.num_pages ? _root.header.num_pages : last_page) - first_page + 1'
   ptrmap_entry:
     seq:
       - id: type
@@ -210,10 +211,10 @@ types:
       - id: first_freeblock
         type: u2
         doc: The start of the first freeblock on the page, or is zero if there are no freeblocks.
-      - id: cell_count
+      - id: num_cells
         type: u2
         doc: The number of cells on the page
-      - id: cell_content_area_start_raw
+      - id: ofs_cell_content_area_raw
         type: u2
         doc: |
           The start of the cell content area. A zero value for this integer is interpreted as 65536.
@@ -230,24 +231,24 @@ types:
       - id: cells
         type: cell_pointer
         repeat: expr
-        repeat-expr: cell_count
+        repeat-expr: num_cells
     instances:
-      call_content_area_start:
-        value: 'cell_content_area_start_raw == 0 ? 65536 : cell_content_area_start_raw'
+      ofs_cell_content_area:
+        value: 'ofs_cell_content_area_raw == 0 ? 65536 : ofs_cell_content_area_raw'
       cell_content_area:
-        pos: call_content_area_start
-        size: _root.header.usable_size - call_content_area_start
-      reserved_area:
-        pos: _root.header.page_size - _root.header.reserved_space
+        pos: ofs_cell_content_area
+        size: _root.header.usable_size - ofs_cell_content_area
+      reserved_space:
+        pos: _root.header.page_size - _root.header.page_reserved_space_size
         size-eos: true
-        if: _root.header.reserved_space != 0
+        if: _root.header.page_reserved_space_size != 0
   cell_pointer:
     seq:
-      - id: content_offset
+      - id: ofs_content
         type: u2
     instances:
       content:
-        pos: content_offset
+        pos: ofs_content
         type:
           switch-on: _parent.page_type
           cases:
@@ -258,16 +259,16 @@ types:
   table_leaf_cell:
     doc-ref: 'https://www.sqlite.org/fileformat.html#b_tree_pages'
     seq:
-      - id: p
+      - id: payload_size
         type: vlq_base128_be
       - id: row_id
         type: vlq_base128_be
       - id: payload
         type:
-          switch-on: '(p.value > _root.header.table_x ? 1 : 0)'
+          switch-on: '(payload_size.value > _root.header.table_max_overflow_payload_size ? 1 : 0)'
           cases:
             0: record
-            1: overflow_record(p.value, _root.header.table_x)
+            1: overflow_record(payload_size.value, _root.header.table_max_overflow_payload_size)
   table_interior_cell:
     doc-ref: 'https://www.sqlite.org/fileformat.html#b_tree_pages'
     seq:
@@ -278,35 +279,35 @@ types:
   index_leaf_cell:
     doc-ref: 'https://www.sqlite.org/fileformat.html#b_tree_pages'
     seq:
-      - id: p
+      - id: payload_size
         type: vlq_base128_be
       - id: payload
         type:
-          switch-on: '(p.value > _root.header.index_x ? 1 : 0)'
+          switch-on: '(payload_size.value > _root.header.index_max_overflow_payload_size ? 1 : 0)'
           cases:
             0: record
-            1: overflow_record(p.value, _root.header.index_x)
+            1: overflow_record(payload_size.value, _root.header.index_max_overflow_payload_size)
   index_interior_cell:
     doc-ref: 'https://www.sqlite.org/fileformat.html#b_tree_pages'
     seq:
       - id: left_child_page
         type: btree_page_pointer
-      - id: p
+      - id: payload_size
         type: vlq_base128_be
       - id: payload
         type:
-          switch-on: '(p.value > _root.header.index_x ? 1 : 0)'
+          switch-on: '(payload_size.value > _root.header.index_max_overflow_payload_size ? 1 : 0)'
           cases:
             0: record
-            1: overflow_record(p.value, _root.header.index_x)
+            1: overflow_record(payload_size.value, _root.header.index_max_overflow_payload_size)
   record:
     doc-ref: 'https://sqlite.org/fileformat2.html#record_format'
     seq:
-      - id: header_length
+      - id: header_size
         type: vlq_base128_be
       - id: header
         type: record_header
-        size: header_length.value - 1
+        size: header_size.value - 1
       - id: values
         type: value(header.value_types[_index])
         repeat: expr
@@ -317,16 +318,17 @@ types:
         type: serial_type
         repeat: eos
   serial_type:
-    -webide-representation: "{value_type:dec}"
+    -webide-representation: "{type:dec}"
     seq:
-      - id: code
+      - id: raw_value
         type: vlq_base128_be
     instances:
-      value_type:
-        value: 'code.value >= 12 ? ((code.value % 2 == 0) ? 12 : 13 + _root.header.text_encoding - 1) : code.value'
-      content_size:
-        value: (code.value - 12) / 2
-        if: code.value >= 12
+      type:
+        value: 'raw_value.value >= 12 ? ((raw_value.value % 2 == 0) ? 12 : 13 + _root.header.text_encoding - 1) : raw_value.value'
+        enum: serial
+      variable_size:
+        value: (raw_value.value - 12) / 2
+        if: raw_value.value >= 12
   value:
     params:
       - id: serial_type
@@ -334,22 +336,22 @@ types:
     seq:
       - id: value
         type:
-          switch-on: serial_type.value_type
+          switch-on: serial_type.type
           cases:
-            0: null_value
-            1: s1
-            2: s2
-            3: b24
-            4: s4
-            5: b48
-            6: s8
-            7: f8
-            8: int_0
-            9: int_1
-            12: blob(serial_type.content_size)
-            13: string_utf8(serial_type.content_size)
-            14: string_utf16_le(serial_type.content_size)
-            15: string_utf16_be(serial_type.content_size)
+            serial::nil: null_value
+            serial::two_comp_8: s1
+            serial::two_comp_16: s2
+            serial::two_comp_24: b24
+            serial::two_comp_32: s4
+            serial::two_comp_48: b48
+            serial::two_comp_64: s8
+            serial::ieee754_64: f8
+            serial::integer_0: int_0
+            serial::integer_1: int_1
+            serial::blob: blob(serial_type.variable_size)
+            serial::string_utf8: string_utf8(serial_type.variable_size)
+            serial::string_utf16_le: string_utf16_le(serial_type.variable_size)
+            serial::string_utf16_be: string_utf16_be(serial_type.variable_size)
   null_value:
     -webide-representation: "NULL"
     seq: []
@@ -361,52 +363,52 @@ types:
     seq: []
   string_utf8:
     params:
-      - id: length
+      - id: len_value
         type: u4
     seq:
       - id: value
-        size: length
+        size: len_value
         type: str
         encoding: UTF-8
   string_utf16_be:
     params:
-      - id: length
+      - id: len_value
         type: u4
     seq:
       - id: value
-        size: length
+        size: len_value
         type: str
         encoding: UTF-16BE
   string_utf16_le:
     params:
-      - id: length
+      - id: len_value
         type: u4
     seq:
       - id: value
-        size: length
+        size: len_value
         type: str
         encoding: UTF-16LE
   blob:
     params:
-      - id: length
+      - id: len_value
         type: u4
     seq:
       - id: value
-        size: length
+        size: len_value
   overflow_record:
     params:
       - id: payload_size
         type: u8
-      - id: x
+      - id: overflow_payload_size_max
         type: u8
     seq:
       - id: inline_payload
-        size: '(k <= x ? k : _root.header.m)'
+        size: '(inline_payload_size <= overflow_payload_size_max ? inline_payload_size : _root.header.overflow_min_payload_size)'
       - id: overflow_page_number
         type: overflow_page_pointer
     instances:
-      k:
-        value: _root.header.m+((payload_size-_root.header.m)%(_root.header.usable_size-4))
+      inline_payload_size:
+        value: _root.header.overflow_min_payload_size+((payload_size-_root.header.overflow_min_payload_size)%(_root.header.usable_size-4))
   overflow_page_pointer:
     seq:
       - id: page_number
@@ -439,12 +441,12 @@ types:
     seq:
       - id: next_page
         type: freelist_trunk_page_pointer
-      - id: l
+      - id: num_free_pages
         type: u4
       - id: free_pages
         type: u4
         repeat: expr
-        repeat-expr: l
+        repeat-expr: num_free_pages
 enums:
   format_version:
     1: legacy
@@ -460,3 +462,41 @@ enums:
     3: overflow1
     4: overflow2
     5: btree
+  serial:
+    # Value is a NULL.
+    0: nil
+    # Value is an 8-bit twos-complement integer.
+    1: two_comp_8
+    # Value is a big-endian 16-bit twos-complement integer.
+    2: two_comp_16
+    # Value is a big-endian 24-bit twos-complement integer.
+    3: two_comp_24
+    # Value is a big-endian 32-bit twos-complement integer.
+    4: two_comp_32
+    # Value is a big-endian 48-bit twos-complement integer.
+    5: two_comp_48
+    # Value is a big-endian 64-bit twos-complement integer.
+    6: two_comp_64
+    # Value is a big-endian IEEE 754-2008 64-bit floating point number.
+    7: ieee754_64
+    # Value is the integer 0. (Only available for schema format 4 and higher.)
+    8: integer_0
+    # Value is the integer 1. (Only available for schema format 4 and higher.)
+    9: integer_1
+    # Reserved for internal use. These serial type codes will never appear in a
+    # well-formed database file, but they might be used in transient and temporary
+    # database files that SQLite sometimes generates for its own use. The meanings
+    # of these codes can shift from one release of SQLite to the next.
+    10: internal_1
+    11: internal_2
+    # The serial types for blob and string are 'N >= 12 and even' and 'N >=13 and odd' respectively
+    # The enum here differs slightly to have a single value for blob and a value per text encoding
+    # for string.
+    #
+    # Value is a BLOB that is (N-12)/2 bytes in length.
+    12: blob
+    # Value is a string in the text encoding and (N-13)/2 bytes in length. The nul terminator is
+    # not stored.
+    13: string_utf8
+    14: string_utf16_le
+    15: string_utf16_be
