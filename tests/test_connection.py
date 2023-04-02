@@ -62,7 +62,10 @@ def test_connection():
 
     print("con._columns")
     for table in con._tables:
-        print(f"table {table}: columns =", con._columns(table))
+        try:
+            print(f"table {table}: columns =", con._columns(table))
+        except NotImplementedError as err:
+            print("ignoring NotImplementedError:", err)
 
     print("con._row_values")
     for table in con._tables:
