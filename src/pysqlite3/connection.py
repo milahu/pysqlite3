@@ -108,7 +108,7 @@ class Connection:
             )
 
         if database != ":memory:":
-            expected_size = db.header.page_size * db.header.page_count
+            expected_size = db.header.page_size * db.header.num_pages
             actual_size = os.path.getsize(database)
             if actual_size != expected_size:
                 # this is a fatal error in the original implementation
@@ -294,10 +294,10 @@ class Connection:
 
         non-standard method
         """
-        if self._db.header.page_count == 1:
+        if self._db.header.num_pages == 1:
             return []
         i = 1 # page 2
-        i_max = self._db.header.page_count - 1
+        i_max = self._db.header.num_pages - 1
         while i < i_max: # `i == i_max` means "end of file"
             page = self._db.pages[i]
             yield page.page_number
@@ -343,7 +343,7 @@ class Connection:
                     #raise NotImplementedError
                     # go to next page
                     page_idx = cell.content.left_child_page.page_number - 1
-                    if page_idx >= self._db.header.page_count: # done last page
+                    if page_idx >= self._db.header.num_pages: # done last page
                         page = None
                         break
                     # TODO this makes sense only for the last cell
@@ -414,7 +414,7 @@ class Connection:
                     #raise NotImplementedError
                     # go to next page
                     page_idx = cell.content.left_child_page.page_number - 1
-                    if page_idx >= self._db.header.page_count: # done last page
+                    if page_idx >= self._db.header.num_pages: # done last page
                         page = None
                         break
                     # TODO this makes sense only for the last cell
@@ -429,7 +429,7 @@ class Connection:
                     last_value_end = page_position + cell.content_offset + 5
                     for value in cell.content.payload.values:
                         start = last_value_end
-                        size = self._size_of_raw_type(value.serial_type.code.value)
+                        size = self._size_of_raw_type(value.serial_type.raw_value.value)
                         locations.append((start, size))
                         last_value_end += size
                     yield locations

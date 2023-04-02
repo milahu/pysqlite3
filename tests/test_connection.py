@@ -41,7 +41,7 @@ def test_connection():
 
     print(f"page size: {con._db.header.page_size} bytes")
     print(
-        f"db size: {con._db.header.page_count} pages",
+        f"db size: {con._db.header.num_pages} pages",
     )
     # FIXME "index" should be "number" because it is 1-based (?)
     print(f"lock_byte_page_index: {con._db.header.lock_byte_page_index}")
