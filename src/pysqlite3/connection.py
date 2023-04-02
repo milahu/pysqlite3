@@ -246,9 +246,7 @@ class Connection:
             if values[0].value.value == "table" and values[1].value.value == table:
                 sql = values[4].value.value
                 tree = sqlglot.parse_one(sql)
-                list(tree.find_all(sqlglot.exp.Identifier))
-                columns = [id.name for id in tree.find_all(sqlglot.exp.Identifier)]
-                columns.pop()  # last ID is the table name
+                columns = [id.name for id in tree.find_all(sqlglot.exp.ColumnDef)]
                 return columns
         return None
 
