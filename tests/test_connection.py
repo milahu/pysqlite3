@@ -43,16 +43,23 @@ def test_connection():
     print(
         f"db size: {con._db.header.page_count} pages",
     )
+    # FIXME "index" should be "number" because it is 1-based (?)
+    print(f"lock_byte_page_index: {con._db.header.lock_byte_page_index}")
+    print(f"first_ptrmap_page_index: {con._db.header.first_ptrmap_page_index}")
+    print(f"last_ptrmap_page_index: {con._db.header.last_ptrmap_page_index}")
 
     print("tables =", con._tables)
 
+    print("con._columns")
     for table in con._tables:
         print(f"table {table}: columns =", con._columns(table))
 
+    print("con._row_values")
     for table in con._tables:
         for row_id, values in enumerate(con._row_values(table)):
             print(f"table {table}: row {row_id + 1} =", values)
 
+    print("con._row_locations")
     for table in con._tables:
         for row_id, locations in enumerate(con._row_locations(table)):
             print(f"table {table}: locations {row_id + 1} =", locations)
