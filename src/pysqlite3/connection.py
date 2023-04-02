@@ -273,6 +273,19 @@ class Connection:
                 return values[3].value
         return None
 
+    @property
+    def _table_page_numbers(self):
+        """
+        get the page numbers of all tables,
+        excluding the sqlite_schema table in page 1
+
+        non-standard method
+        """
+        page = self._db.root_pages[0]
+        assert page.page_type.value == 0x0D  # Table B-Tree Leaf Cell
+        for cell in page.cells:
+            yield cell.content.payload.values[3].value
+
     def _row_values(self, table):
         """
         get all row values of a table
