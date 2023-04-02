@@ -98,10 +98,8 @@ class Sqlite3(KaitaiStruct):
                 io = self._root._io
                 _pos = io.pos()
                 io.seek(((self.page_number - 1) * self._root.header.page_size))
-                self._raw__m_page = io.read_bytes(self._root.header.page_size)
-                _io__raw__m_page = KaitaiStream(BytesIO(self._raw__m_page))
                 self._m_page = Sqlite3.FreelistTrunkPage(
-                    _io__raw__m_page, self, self._root
+                    io, self, self._root
                 )
                 io.seek(_pos)
 
@@ -213,10 +211,8 @@ class Sqlite3(KaitaiStruct):
                 io = self._root._io
                 _pos = io.pos()
                 io.seek(((self.page_number - 1) * self._root.header.page_size))
-                self._raw__m_page = io.read_bytes(self._root.header.page_size)
-                _io__raw__m_page = KaitaiStream(BytesIO(self._raw__m_page))
                 self._m_page = Sqlite3.BtreePage(
-                    self.page_number, _io__raw__m_page, self, self._root
+                    self.page_number, io, self, self._root
                 )
                 io.seek(_pos)
 
@@ -396,9 +392,7 @@ class Sqlite3(KaitaiStruct):
                 io = self._root._io
                 _pos = io.pos()
                 io.seek(((self.page_number - 1) * self._root.header.page_size))
-                self._raw__m_page = io.read_bytes(self._root.header.page_size)
-                _io__raw__m_page = KaitaiStream(BytesIO(self._raw__m_page))
-                self._m_page = Sqlite3.OverflowPage(_io__raw__m_page, self, self._root)
+                self._m_page = Sqlite3.OverflowPage(io, self, self._root)
                 io.seek(_pos)
 
             return getattr(self, "_m_page", None)
