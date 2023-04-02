@@ -315,20 +315,59 @@ class Connection:
         """
         page_idx = self._rootpage_num(table) - 1
         assert page_idx != None
-        page = self._db.pages[page_idx] # FIXME random access
-        assert page.page_type.value == 0x0D  # Table B-Tree Leaf Cell
+        print("con._row_values: table", table)
+        print("con._row_values: page_idx", page_idx)
+        page = self._db.pages[page_idx]
+        #assert page.page_type.value == 0x0D, f"expected page type 0x0D, actual 0x{page.page_type.value:02X}"
         while page:
-            for cell_idx, cell in enumerate(page.cells):
-                values = []
-                for value in cell.content.payload.values:
-                    if value.serial_type.value_type >= 12:
-                        # blob or string
-                        values.append(value.value.value)
-                    else:
-                        values.append(value.value)
-                yield values
-            page = None
-            # TODO read more pages when necessary
+            print("con._row_values: page.page_type", hex(page.page_type.value))
+            if page.page_type.value == 0x05:
+                for cell_idx, cell in enumerate(page.cells):
+                    print()
+                    print("con._row_values: page.page_number", page.page_number)
+                    # CellPointer
+                    print("con._row_values: cell", cell, dir(cell))
+                    # int
+                    print("con._row_values: cell.content_offset", cell.content_offset)
+                    # cell.content is TableInteriorCell
+                    # Interior pages of table b-trees have no payload
+                    print("con._row_values: cell.content", cell.content, dir(cell.content))
+                    # BtreePagePointer
+                    print("con._row_values: cell.content.left_child_page", cell.content.left_child_page, dir(cell.content.left_child_page))
+                    # EOFError because idx out of range
+                    #print("con._row_values: cell.content.left_child_page.page", cell.content.left_child_page.page)
+                    # int
+                    print("con._row_values: cell.content.left_child_page.page_number", cell.content.left_child_page.page_number)
+                    # int
+                    print("con._row_values: cell.content.row_id.value", cell.content.row_id.value)
+                    #raise NotImplementedError
+                    # go to next page
+                    page_idx = cell.content.left_child_page.page_number - 1
+                    if page_idx >= self._db.header.page_count: # done last page
+                        page = None
+                        break
+                    # TODO this makes sense only for the last cell
+                    # or is there always only one cell?
+                    assert cell_idx == 0
+                    page = self._db.pages[page_idx]
+            elif page.page_type.value == 0x0D:
+                # TODO is this reachable?
+                for cell_idx, cell in enumerate(page.cells):
+                    # cell.content is TODO
+                    print("con._row_values: cell.content", cell.content, dir(cell.content))
+                    raise NotImplementedError
+                    values = []
+                    for value in cell.content.payload.values:
+                        if value.serial_type.value_type >= 12:
+                            # blob or string
+                            values.append(value.value.value)
+                        else:
+                            values.append(value.value)
+                    yield values
+                page = None
+                # TODO read more pages when necessary
+            else:
+                raise Exception(f"expected page type {{0x0D, 0x05}}, actual 0x{page.page_type.value:02X}")
 
     def _size_of_raw_type(self, raw_type):
         """
