@@ -226,8 +226,8 @@ class Connection:
         """
         tables = []
         page = self._db.pages[0]
-        assert page.page_type.value == 0x0D  # Table B-Tree Leaf Cell
-        for cell_idx, cell in enumerate(page.cells):
+        assert page.body.page_type.value == 0x0D  # Table B-Tree Leaf Cell
+        for cell_idx, cell in enumerate(page.body.cells):
             values = cell.content.payload.values
             if values[0].value.value == "table":
                 tables.append(values[1].value.value)
@@ -239,9 +239,9 @@ class Connection:
 
         non-standard method
         """
-        page = self._db.root_pages[0]
-        assert page.page_type.value == 0x0D  # Table B-Tree Leaf Cell
-        for cell_idx, cell in enumerate(page.cells):
+        page = self._db.pages[0]
+        assert page.body.page_type.value == 0x0D  # Table B-Tree Leaf Cell
+        for cell_idx, cell in enumerate(page.body.cells):
             values = cell.content.payload.values
             if values[0].value.value == "table" and values[1].value.value == table:
                 sql = values[4].value.value
@@ -260,7 +260,7 @@ class Connection:
         non-standard method
         """
         raise NotImplementedError
-        # TODO parse sql in self._db.root_pages[0]
+        # TODO parse sql in self._db.pages[0]
 
     def _rootpage_num(self, table):
         """
@@ -268,9 +268,9 @@ class Connection:
 
         non-standard method
         """
-        page = self._db.root_pages[0]
-        assert page.page_type.value == 0x0D  # Table B-Tree Leaf Cell
-        for cell_idx, cell in enumerate(page.cells):
+        page = self._db.pages[0]
+        assert page.body.page_type.value == 0x0D  # Table B-Tree Leaf Cell
+        for cell_idx, cell in enumerate(page.body.cells):
             values = cell.content.payload.values
             if values[0].value.value == "table" and values[1].value.value == table:
                 return values[3].value
@@ -284,9 +284,9 @@ class Connection:
 
         non-standard method
         """
-        page = self._db.root_pages[0]
-        assert page.page_type.value == 0x0D  # Table B-Tree Leaf Cell
-        for cell in page.cells:
+        page = self._db.pages[0]
+        assert page.body.page_type.value == 0x0D  # Table B-Tree Leaf Cell
+        for cell in page.body.cells:
             yield cell.content.payload.values[3].value
 
     @property
@@ -306,7 +306,7 @@ class Connection:
             yield page.page_number
             # go to next root page
             if hasattr(page, "right_ptr"):
-                i = page.right_ptr.page_number - 1
+                i = page.body.right_ptr.page_number - 1
             else:
                 i = i + 1
 
@@ -321,11 +321,11 @@ class Connection:
         print("con._row_values: table", table)
         print("con._row_values: page_idx", page_idx)
         page = self._db.pages[page_idx]
-        #assert page.page_type.value == 0x0D, f"expected page type 0x0D, actual 0x{page.page_type.value:02X}"
+        #assert page.body.page_type.value == 0x0D, f"expected page type 0x0D, actual 0x{page.body.page_type.value:02X}"
         while page:
-            print("con._row_values: page.page_type", hex(page.page_type.value))
-            if page.page_type.value == 0x05:
-                for cell_idx, cell in enumerate(page.cells):
+            print("con._row_values: page.body.page_type", hex(page.body.page_type.value))
+            if page.body.page_type.value == 0x05:
+                for cell_idx, cell in enumerate(page.body.cells):
                     print()
                     print("con._row_values: page.page_number", page.page_number)
                     # CellPointer
@@ -338,7 +338,7 @@ class Connection:
                     # BtreePagePointer
                     print("con._row_values: cell.content.left_child_page", cell.content.left_child_page, dir(cell.content.left_child_page))
                     # EOFError because idx out of range
-                    #print("con._row_values: cell.content.left_child_page.page", cell.content.left_child_page.page)
+                    #print("con._row_values: cell.content.left_child_page.body.page", cell.content.left_child_page.body.page)
                     # int
                     print("con._row_values: cell.content.left_child_page.page_number", cell.content.left_child_page.page_number)
                     # int
@@ -353,9 +353,9 @@ class Connection:
                     # or is there always only one cell?
                     assert cell_idx == 0
                     page = self._db.pages[page_idx]
-            elif page.page_type.value == 0x0D:
+            elif page.body.page_type.value == 0x0D:
                 # TODO is this reachable?
-                for cell_idx, cell in enumerate(page.cells):
+                for cell_idx, cell in enumerate(page.body.cells):
                     # cell.content is TODO
                     print("con._row_values: cell.content", cell.content, dir(cell.content))
                     raise NotImplementedError
@@ -370,7 +370,7 @@ class Connection:
                 page = None
                 # TODO read more pages when necessary
             else:
-                raise Exception(f"expected page type {{0x0D, 0x05}}, actual 0x{page.page_type.value:02X}")
+                raise Exception(f"expected page type {{0x0D, 0x05}}, actual 0x{page.body.page_type.value:02X}")
 
     def _size_of_raw_type(self, raw_type):
         """
@@ -397,12 +397,12 @@ class Connection:
         page_idx = self._rootpage_num(table) - 1
         assert page_idx != None
         page = self._db.pages[page_idx] # FIXME random access
-        #assert page.page_type.value == 0x0D  # Table B-Tree Leaf Cell
+        #assert page.body.page_type.value == 0x0D  # Table B-Tree Leaf Cell
         while page:
             page_position = page_idx * self._db.header.page_size
 
-            if page.page_type.value == 0x05:
-                for cell_idx, cell in enumerate(page.cells):
+            if page.body.page_type.value == 0x05:
+                for cell_idx, cell in enumerate(page.body.cells):
                     print()
                     print("con._row_locations: page.page_number", page.page_number)
                     # cell.content is TableInteriorCell
@@ -425,8 +425,8 @@ class Connection:
                     assert cell_idx == 0
                     page = self._db.pages[page_idx]
 
-            elif page.page_type.value == 0x0D:
-                for cell_idx, cell in enumerate(page.cells):
+            elif page.body.page_type.value == 0x0D:
+                for cell_idx, cell in enumerate(page.body.cells):
                     locations = []
                     # TODO why +5? header of cell? always 5?
                     last_value_end = page_position + cell.content_offset + 5

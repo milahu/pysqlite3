@@ -56,7 +56,7 @@ def test_connection():
     print(f"con._db.pages[len-1].page_number =", con._db.pages[len(con._db.pages)-1].page_number)
     print(f"con._db.pages[-1] =", con._db.pages[-1])
     print(f"con._db.pages[-1].page_number =", con._db.pages[-1].page_number)
-    print(f"con._db.root_pages =", con._db.root_pages)
+    print(f"con._root_page_numbers =", con._root_page_numbers)
 
     print("tables =", con._tables)
 
