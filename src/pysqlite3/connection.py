@@ -354,11 +354,9 @@ class Connection:
                     assert cell_idx == 0
                     page = self._db.pages[page_idx]
             elif page.body.page_type.value == 0x0D:
-                # TODO is this reachable?
                 for cell_idx, cell in enumerate(page.body.cells):
-                    # cell.content is TODO
-                    print("con._row_values: cell.content", cell.content, dir(cell.content))
-                    raise NotImplementedError
+                    # cell.content is TableLeafCell
+                    #print("con._row_values: cell.content", cell.content, dir(cell.content))
                     values = []
                     for value in cell.content.payload.values:
                         if value.serial_type.type.value >= 12:
