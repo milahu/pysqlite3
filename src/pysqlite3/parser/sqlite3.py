@@ -69,10 +69,38 @@ class Sqlite3(KaitaiStruct):
         string_utf16_le = 14
         string_utf16_be = 15
 
+    class PagesList:
+        def __init__(self, root):
+            self.root = root
+
+        def __len__(self):
+            return self.root.header.num_pages
+
+        def __getitem__(self, i):  # i is 0-based
+            if i < 0:  # -1 means last page, etc
+                i = self.root.header.num_pages + i
+
+            assert (
+                0 <= i and i < self.root.header.num_pages
+            ), f"page index is out of range: {i} is not in (0, {self.root.header.num_pages - 1})"
+
+            # TODO LRU cache with sparse array?
+            # note: LRU cache does not give pointer equality
+            # but equality check is trivial: page_a.page_number == page_b.page_number
+
+            _pos = self.root._io.pos()
+            self.root._io.seek(i * self.root.header.page_size)
+            page = Sqlite3.Page(
+                (i + 1), (self.root.header.page_size * i), self.root._io, self.root, self.root._root
+            )
+            self.root._io.seek(_pos)
+            return page
+
     def __init__(self, _io, _parent=None, _root=None):
         self._io = _io
         self._parent = _parent
         self._root = _root if _root else self
+        self.pages = Sqlite3.PagesList(self)
         self._read()
 
     def _read(self):
@@ -931,41 +959,6 @@ class Sqlite3(KaitaiStruct):
                         self.header.value_types[i], self._io, self, self._root
                     )
                 )
-
-    @property
-    def pages(self):
-        if hasattr(self, "_m_pages"):
-            return self._m_pages
-
-        class PagesList:
-            def __init__(self, root):
-                self.root = root
-
-            def __len__(self):
-                return self.root.header.num_pages
-
-            def __getitem__(self, i):  # i is 0-based
-                if i < 0:  # -1 means last page, etc
-                    i = self.root.header.num_pages + i
-
-                assert (
-                    0 <= i and i < self.root.header.num_pages
-                ), f"page index is out of range: {i} is not in (0, {self.root.header.num_pages - 1})"
-
-                # TODO LRU cache with sparse array?
-                # note: LRU cache does not give pointer equality
-                # but equality check is trivial: page_a.page_number == page_b.page_number
-
-                _pos = self.root._io.pos()
-                self.root._io.seek(i * self.root.header.page_size)
-                page = Sqlite3.Page(
-                    (i + 1), (self.root.header.page_size * i), self.root._io, self.root, self.root._root
-                )
-                self.root._io.seek(_pos)
-                return page
-
-        self._m_pages = PagesList(self)
-        return getattr(self, "_m_pages", None)
 
     @property
     def root_pages(self):
