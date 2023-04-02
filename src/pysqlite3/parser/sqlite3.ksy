@@ -324,10 +324,17 @@ types:
         type: vlq_base128_be
     instances:
       type:
+        # Workaround for string encoding:
+        # 13 + _root.header.text_encoding - 1
+        # See type serial:
+        # 12: blob
+        # 13: string_utf8
+        # 14: string_utf16_le
+        # 15: string_utf16_be
         value: 'raw_value.value >= 12 ? ((raw_value.value % 2 == 0) ? 12 : 13 + _root.header.text_encoding - 1) : raw_value.value'
         enum: serial
-      variable_size:
-        value: (raw_value.value - 12) / 2
+      len_blob_string:
+        value: '(raw_value.value % 2 == 0) ? (raw_value.value - 12) / 2 : (raw_value.value - 13) / 2'
         if: raw_value.value >= 12
   value:
     params:
@@ -348,10 +355,11 @@ types:
             serial::ieee754_64: f8
             serial::integer_0: int_0
             serial::integer_1: int_1
-            serial::blob: blob(serial_type.variable_size)
-            serial::string_utf8: string_utf8(serial_type.variable_size)
-            serial::string_utf16_le: string_utf16_le(serial_type.variable_size)
-            serial::string_utf16_be: string_utf16_be(serial_type.variable_size)
+            serial::blob: blob(serial_type.len_blob_string)
+            # Workaround for string encoding:
+            serial::string_utf8: string_utf8(serial_type.len_blob_string)
+            serial::string_utf16_le: string_utf16_le(serial_type.len_blob_string)
+            serial::string_utf16_be: string_utf16_be(serial_type.len_blob_string)
   null_value:
     -webide-representation: "NULL"
     seq: []
@@ -497,6 +505,27 @@ enums:
     12: blob
     # Value is a string in the text encoding and (N-13)/2 bytes in length. The nul terminator is
     # not stored.
+    # Workaround for string encoding:
+    # Originally, sqlite3 has only one string type,
+    # and the string encoding is stored in _root.header.text_encoding.
     13: string_utf8
     14: string_utf16_le
     15: string_utf16_be
+  # FIXME error: expected string or map, got 0
+  #serial_type_size:
+  #  0: 0
+  #  1: 1
+  #  2: 2
+  #  3: 3
+  #  4: 4
+  #  5: 6
+  #  6: 8
+  #  7: 8
+  #  8: 0
+  #  9: 0
+  #  # -1 means variable size
+  #  10: -1 # internal
+  #  11: -1 # internal
+  #  # blob and string: size is stored in serial_type.len_blob_string
+  #  12: -1 # blob
+  #  13: -1 # string
