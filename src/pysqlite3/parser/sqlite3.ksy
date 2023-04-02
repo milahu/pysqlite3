@@ -37,20 +37,31 @@ seq:
     type: database_header
 instances:
   pages:
-    type:
-      switch-on: '(_index == header.lock_byte_page_index ? 0 : _index >= header.first_ptrmap_page_index and _index <= header.last_ptrmap_page_index ? 1 : 2)'
-      cases:
-        0: lock_byte_page(_index + 1)
-        1: ptrmap_page(_index + 1)
-        # TODO: Free pages and cell overflow pages are incorrectly interpreted as btree pages
-        # This is unfortunate, but unavoidable since there's no way to recognize these types at
-        # this point in the parser.
-        2: btree_page(_index + 1)
-    pos: 0
-    size: header.page_size
+    type: page(_index + 1, header.page_size * _index)
     repeat: expr
     repeat-expr: header.num_pages
 types:
+  page:
+    params:
+      - id: page_number
+        type: s4
+      - id: ofs_body
+        type: s4
+    instances:
+      page_index:
+        value: 'page_number - 1'
+      body:
+        pos: ofs_body
+        size: _root.header.page_size
+        type:
+          switch-on: '(page_index == _root.header.idx_lock_byte_page ? 0 : page_index >= _root.header.idx_first_ptrmap_page and page_index <= _root.header.idx_last_ptrmap_page ? 1 : 2)'
+          cases:
+            0: lock_byte_page(page_number)
+            1: ptrmap_page(page_number)
+            # TODO: Free pages and cell overflow pages are incorrectly interpreted as btree pages
+            # This is unfortunate, but unavoidable since there's no way to recognize these types at
+            # this point in the parser.
+            2: btree_page(page_number)
   database_header:
     seq:
       - id: magic
@@ -130,26 +141,26 @@ types:
         doc: The "usable size" of a database page
       overflow_min_payload_size:
         value: ((usable_size-12)*32/255)-23
-        doc: The minimum amount of inline b-tree cell payload
+        doc: The minimum amount of payload that must be stored on the btree page before spilling is allowed
       table_max_overflow_payload_size:
         value: usable_size - 35
-        doc: The maximum amount of inline table b-tree cell payload
+        doc: The maximum amount of payload that can be stored directly on the b-tree page without spilling onto an overflow page. Value for table page
       index_max_overflow_payload_size:
         value: ((usable_size-12)*64/255)-23
-        doc: The maximum amount of inline index b-tree cell payload
-      lock_byte_page_index:
+        doc: The maximum amount of payload that can be stored directly on the b-tree page without spilling onto an overflow page. Value for index page
+      idx_lock_byte_page:
         value: '1073741824 / page_size'
-      ptrmap_max_num_entries:
+      num_ptrmap_entries_max:
         value: usable_size/5
-        doc: The number of ptrmap entries per ptrmap page
-      first_ptrmap_page_index:
+        doc: The maximum number of ptrmap entries per ptrmap page
+      idx_first_ptrmap_page:
         value: 'largest_root_page > 0 ? 1 : 0'
         doc: The index (0-based) of the first ptrmap page
       num_ptrmap_pages:
-        value: 'first_ptrmap_page_index > 0 ? (num_pages / ptrmap_max_num_entries) + 1 : 0'
+        value: 'idx_first_ptrmap_page > 0 ? (num_pages / num_ptrmap_entries_max) + 1 : 0'
         doc: The number of ptrmap pages in the database
-      last_ptrmap_page_index:
-        value: 'first_ptrmap_page_index + num_ptrmap_pages - (first_ptrmap_page_index + num_ptrmap_pages >= lock_byte_page_index ? 0 : 1)'
+      idx_last_ptrmap_page:
+        value: 'idx_first_ptrmap_page + num_ptrmap_pages - (idx_first_ptrmap_page + num_ptrmap_pages >= idx_lock_byte_page ? 0 : 1)'
         doc: The index (0-based) of the last ptrmap page (inclusive)
   lock_byte_page:
     params:
@@ -174,9 +185,9 @@ types:
         repeat-expr: num_entries
     instances:
       first_page:
-        value: '3 + (_root.header.ptrmap_max_num_entries * (page_number - 2))'
+        value: '3 + (_root.header.num_ptrmap_entries_max * (page_number - 2))'
       last_page:
-        value: 'first_page + _root.header.ptrmap_max_num_entries - 1'
+        value: 'first_page + _root.header.num_ptrmap_entries_max - 1'
       num_entries:
         value: '(last_page > _root.header.num_pages ? _root.header.num_pages : last_page) - first_page + 1'
   ptrmap_entry:

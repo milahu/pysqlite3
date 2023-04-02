@@ -315,6 +315,68 @@ class Sqlite3(KaitaiStruct):
             for i in range(self.num_free_pages):
                 self.free_pages.append(self._io.read_u4be())
 
+    class Page(KaitaiStruct):
+        def __init__(self, page_number, ofs_body, _io, _parent=None, _root=None):
+            self._io = _io
+            self._parent = _parent
+            self._root = _root if _root else self
+            self.page_number = page_number
+            self.ofs_body = ofs_body
+            self._read()
+
+        def _read(self):
+            pass
+
+        @property
+        def page_index(self):
+            if hasattr(self, "_m_page_index"):
+                return self._m_page_index
+
+            self._m_page_index = self.page_number - 1
+            return getattr(self, "_m_page_index", None)
+
+        @property
+        def body(self):
+            if hasattr(self, "_m_body"):
+                return self._m_body
+
+            _pos = self._io.pos()
+            self._io.seek(self.ofs_body)
+            _on = (
+                0
+                if self.page_index == self._root.header.idx_lock_byte_page
+                else (
+                    1
+                    if (
+                        (self.page_index >= self._root.header.idx_first_ptrmap_page)
+                        and (self.page_index <= self._root.header.idx_last_ptrmap_page)
+                    )
+                    else 2
+                )
+            )
+            if _on == 0:
+                self._raw__m_body = self._io.read_bytes(self._root.header.page_size)
+                _io__raw__m_body = KaitaiStream(BytesIO(self._raw__m_body))
+                self._m_body = Sqlite3.LockBytePage(
+                    self.page_number, _io__raw__m_body, self, self._root
+                )
+            elif _on == 1:
+                self._raw__m_body = self._io.read_bytes(self._root.header.page_size)
+                _io__raw__m_body = KaitaiStream(BytesIO(self._raw__m_body))
+                self._m_body = Sqlite3.PtrmapPage(
+                    self.page_number, _io__raw__m_body, self, self._root
+                )
+            elif _on == 2:
+                self._raw__m_body = self._io.read_bytes(self._root.header.page_size)
+                _io__raw__m_body = KaitaiStream(BytesIO(self._raw__m_body))
+                self._m_body = Sqlite3.BtreePage(
+                    self.page_number, _io__raw__m_body, self, self._root
+                )
+            else:
+                self._m_body = self._io.read_bytes(self._root.header.page_size)
+            self._io.seek(_pos)
+            return getattr(self, "_m_body", None)
+
     class PtrmapPage(KaitaiStruct):
         def __init__(self, page_number, _io, _parent=None, _root=None):
             self._io = _io
@@ -334,7 +396,7 @@ class Sqlite3(KaitaiStruct):
                 return self._m_first_page
 
             self._m_first_page = 3 + (
-                self._root.header.ptrmap_max_num_entries * (self.page_number - 2)
+                self._root.header.num_ptrmap_entries_max * (self.page_number - 2)
             )
             return getattr(self, "_m_first_page", None)
 
@@ -344,7 +406,7 @@ class Sqlite3(KaitaiStruct):
                 return self._m_last_page
 
             self._m_last_page = (
-                self.first_page + self._root.header.ptrmap_max_num_entries
+                self.first_page + self._root.header.num_ptrmap_entries_max
             ) - 1
             return getattr(self, "_m_last_page", None)
 
@@ -629,24 +691,40 @@ class Sqlite3(KaitaiStruct):
                 return self._m_num_ptrmap_pages
 
             self._m_num_ptrmap_pages = (
-                (self.num_pages // self.ptrmap_max_num_entries + 1)
-                if self.first_ptrmap_page_index > 0
+                (self.num_pages // self.num_ptrmap_entries_max + 1)
+                if self.idx_first_ptrmap_page > 0
                 else 0
             )
             return getattr(self, "_m_num_ptrmap_pages", None)
 
         @property
-        def ptrmap_max_num_entries(self):
-            """The number of ptrmap entries per ptrmap page."""
-            if hasattr(self, "_m_ptrmap_max_num_entries"):
-                return self._m_ptrmap_max_num_entries
+        def idx_last_ptrmap_page(self):
+            """The index (0-based) of the last ptrmap page (inclusive)."""
+            if hasattr(self, "_m_idx_last_ptrmap_page"):
+                return self._m_idx_last_ptrmap_page
 
-            self._m_ptrmap_max_num_entries = self.usable_size // 5
-            return getattr(self, "_m_ptrmap_max_num_entries", None)
+            self._m_idx_last_ptrmap_page = (
+                self.idx_first_ptrmap_page + self.num_ptrmap_pages
+            ) - (
+                0
+                if (self.idx_first_ptrmap_page + self.num_ptrmap_pages)
+                >= self.idx_lock_byte_page
+                else 1
+            )
+            return getattr(self, "_m_idx_last_ptrmap_page", None)
+
+        @property
+        def idx_first_ptrmap_page(self):
+            """The index (0-based) of the first ptrmap page."""
+            if hasattr(self, "_m_idx_first_ptrmap_page"):
+                return self._m_idx_first_ptrmap_page
+
+            self._m_idx_first_ptrmap_page = 1 if self.largest_root_page > 0 else 0
+            return getattr(self, "_m_idx_first_ptrmap_page", None)
 
         @property
         def overflow_min_payload_size(self):
-            """The minimum amount of inline b-tree cell payload."""
+            """The minimum amount of payload that must be stored on the btree page before spilling is allowed."""
             if hasattr(self, "_m_overflow_min_payload_size"):
                 return self._m_overflow_min_payload_size
 
@@ -654,6 +732,23 @@ class Sqlite3(KaitaiStruct):
                 (self.usable_size - 12) * 32
             ) // 255 - 23
             return getattr(self, "_m_overflow_min_payload_size", None)
+
+        @property
+        def num_ptrmap_entries_max(self):
+            """The maximum number of ptrmap entries per ptrmap page."""
+            if hasattr(self, "_m_num_ptrmap_entries_max"):
+                return self._m_num_ptrmap_entries_max
+
+            self._m_num_ptrmap_entries_max = self.usable_size // 5
+            return getattr(self, "_m_num_ptrmap_entries_max", None)
+
+        @property
+        def idx_lock_byte_page(self):
+            if hasattr(self, "_m_idx_lock_byte_page"):
+                return self._m_idx_lock_byte_page
+
+            self._m_idx_lock_byte_page = 1073741824 // self.page_size
+            return getattr(self, "_m_idx_lock_byte_page", None)
 
         @property
         def page_size(self):
@@ -665,17 +760,8 @@ class Sqlite3(KaitaiStruct):
             return getattr(self, "_m_page_size", None)
 
         @property
-        def first_ptrmap_page_index(self):
-            """The index (0-based) of the first ptrmap page."""
-            if hasattr(self, "_m_first_ptrmap_page_index"):
-                return self._m_first_ptrmap_page_index
-
-            self._m_first_ptrmap_page_index = 1 if self.largest_root_page > 0 else 0
-            return getattr(self, "_m_first_ptrmap_page_index", None)
-
-        @property
         def table_max_overflow_payload_size(self):
-            """The maximum amount of inline table b-tree cell payload."""
+            """The maximum amount of payload that can be stored directly on the b-tree page without spilling onto an overflow page. Value for table page."""
             if hasattr(self, "_m_table_max_overflow_payload_size"):
                 return self._m_table_max_overflow_payload_size
 
@@ -683,32 +769,8 @@ class Sqlite3(KaitaiStruct):
             return getattr(self, "_m_table_max_overflow_payload_size", None)
 
         @property
-        def last_ptrmap_page_index(self):
-            """The index (0-based) of the last ptrmap page (inclusive)."""
-            if hasattr(self, "_m_last_ptrmap_page_index"):
-                return self._m_last_ptrmap_page_index
-
-            self._m_last_ptrmap_page_index = (
-                self.first_ptrmap_page_index + self.num_ptrmap_pages
-            ) - (
-                0
-                if (self.first_ptrmap_page_index + self.num_ptrmap_pages)
-                >= self.lock_byte_page_index
-                else 1
-            )
-            return getattr(self, "_m_last_ptrmap_page_index", None)
-
-        @property
-        def lock_byte_page_index(self):
-            if hasattr(self, "_m_lock_byte_page_index"):
-                return self._m_lock_byte_page_index
-
-            self._m_lock_byte_page_index = 1073741824 // self.page_size
-            return getattr(self, "_m_lock_byte_page_index", None)
-
-        @property
         def index_max_overflow_payload_size(self):
-            """The maximum amount of inline index b-tree cell payload."""
+            """The maximum amount of payload that can be stored directly on the b-tree page without spilling onto an overflow page. Value for index page."""
             if hasattr(self, "_m_index_max_overflow_payload_size"):
                 return self._m_index_max_overflow_payload_size
 
@@ -875,43 +937,12 @@ class Sqlite3(KaitaiStruct):
         if hasattr(self, "_m_pages"):
             return self._m_pages
 
-        _pos = self._io.pos()
-        self._io.seek(0)
-        self._raw__m_pages = []
         self._m_pages = []
         for i in range(self.header.num_pages):
-            _on = (
-                0
-                if i == self.header.lock_byte_page_index
-                else (
-                    1
-                    if (
-                        (i >= self.header.first_ptrmap_page_index)
-                        and (i <= self.header.last_ptrmap_page_index)
-                    )
-                    else 2
+            self._m_pages.append(
+                Sqlite3.Page(
+                    (i + 1), (self.header.page_size * i), self._io, self, self._root
                 )
             )
-            if _on == 0:
-                self._raw__m_pages.append(self._io.read_bytes(self.header.page_size))
-                _io__raw__m_pages = KaitaiStream(BytesIO(self._raw__m_pages[i]))
-                self._m_pages.append(
-                    Sqlite3.LockBytePage((i + 1), _io__raw__m_pages, self, self._root)
-                )
-            elif _on == 1:
-                self._raw__m_pages.append(self._io.read_bytes(self.header.page_size))
-                _io__raw__m_pages = KaitaiStream(BytesIO(self._raw__m_pages[i]))
-                self._m_pages.append(
-                    Sqlite3.PtrmapPage((i + 1), _io__raw__m_pages, self, self._root)
-                )
-            elif _on == 2:
-                self._raw__m_pages.append(self._io.read_bytes(self.header.page_size))
-                _io__raw__m_pages = KaitaiStream(BytesIO(self._raw__m_pages[i]))
-                self._m_pages.append(
-                    Sqlite3.BtreePage((i + 1), _io__raw__m_pages, self, self._root)
-                )
-            else:
-                self._m_pages.append(self._io.read_bytes(self.header.page_size))
 
-        self._io.seek(_pos)
         return getattr(self, "_m_pages", None)
