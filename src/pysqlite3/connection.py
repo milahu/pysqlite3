@@ -245,8 +245,11 @@ class Connection:
             values = cell.content.payload.values
             if values[0].value.value == "table" and values[1].value.value == table:
                 sql = values[4].value.value
-                tree = sqlglot.parse_one(sql)
+                tree = sqlglot.parse_one(sql, read="sqlite")
                 columns = [id.name for id in tree.find_all(sqlglot.exp.ColumnDef)]
+                if len(columns) == 0:
+                    # FIXME try other sql parsers: sqlparse, sqltree
+                    raise NotImplementedError(f"table has untyped columns: {sql}")
                 return columns
         return None
 
