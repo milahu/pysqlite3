@@ -286,6 +286,27 @@ class Connection:
         for cell in page.cells:
             yield cell.content.payload.values[3].value
 
+    @property
+    def _root_page_numbers(self):
+        """
+        get the page numbers of all root pages,
+        excluding page 1
+
+        non-standard method
+        """
+        if self._db.header.page_count == 1:
+            return []
+        i = 1 # page 2
+        i_max = self._db.header.page_count - 1
+        while i < i_max: # `i == i_max` means "end of file"
+            page = self._db.pages[i]
+            yield page.page_number
+            # go to next root page
+            if hasattr(page, "right_ptr"):
+                i = page.right_ptr.page_number - 1
+            else:
+                i = i + 1
+
     def _row_values(self, table):
         """
         get all row values of a table
