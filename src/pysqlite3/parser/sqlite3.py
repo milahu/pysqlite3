@@ -937,12 +937,77 @@ class Sqlite3(KaitaiStruct):
         if hasattr(self, "_m_pages"):
             return self._m_pages
 
-        self._m_pages = []
-        for i in range(self.header.num_pages):
-            self._m_pages.append(
-                Sqlite3.Page(
-                    (i + 1), (self.header.page_size * i), self._io, self, self._root
+        class PagesList:
+            def __init__(self, root):
+                self.root = root
+
+            def __len__(self):
+                return self.root.header.num_pages
+
+            def __getitem__(self, i):  # i is 0-based
+                if i < 0:  # -1 means last page, etc
+                    i = self.root.header.num_pages + i
+
+                assert (
+                    0 <= i and i < self.root.header.num_pages
+                ), f"page index is out of range: {i} is not in (0, {self.root.header.num_pages - 1})"
+
+                # TODO LRU cache with sparse array?
+                # note: LRU cache does not give pointer equality
+                # but equality check is trivial: page_a.page_number == page_b.page_number
+
+                _pos = self.root._io.pos()
+                self.root._io.seek(i * self.root.header.page_size)
+                page = Sqlite3.Page(
+                    (i + 1), (self.root.header.page_size * i), self.root._io, self.root, self.root._root
+                )
+                self.root._io.seek(_pos)
+                return page
+
+        self._m_pages = PagesList(self)
+        return getattr(self, "_m_pages", None)
+
+    @property
+    def root_pages(self):
+        if hasattr(self, "_m_root_pages"):
+            return self._m_root_pages
+
+        _pos = self._io.pos()
+        self._raw__m_root_pages = []
+        self._m_root_pages = []
+        i = 0
+        i_max = self.header.num_pages - 1
+        while i < i_max:  # `i == i_max` means "end of file"
+            self._io.seek(i * self.header.page_size)
+            _on = (
+                0
+                if i == self.header.lock_byte_page_index
+                else (
+                    1
+                    if (
+                        (i >= self.header.first_ptrmap_page_index)
+                        and (i <= self.header.last_ptrmap_page_index)
+                    )
+                    else 2
                 )
             )
+            assert _on == 2
+            self._m_root_pages.append(
+                Sqlite3.BtreePage((i + 1), self._io, self, self._root)
+            )
 
-        return getattr(self, "_m_pages", None)
+            page = self._m_root_pages[-1]
+
+            # FIXME page.right_ptr should be None by default
+            # `if page.right_ptr:` is faster than `if hasattr(page, "right_ptr"):`
+            # generally, struct layout should be constant = all fields are always present
+            # because this allows for memory optimization
+
+            # go to next root page
+            if hasattr(page, "right_ptr"):
+                i = page.right_ptr.page_number - 1
+            else:
+                i = i + 1
+
+        self._io.seek(_pos)
+        return getattr(self, "_m_root_pages", None)
