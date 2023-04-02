@@ -225,7 +225,7 @@ class Connection:
         that causes the trigger to fire.
         """
         tables = []
-        page = self._db.pages[0] # FIXME this fails on large datbase
+        page = self._db.root_pages[0]
         assert page.page_type.value == 0x0D  # Table B-Tree Leaf Cell
         for cell_idx, cell in enumerate(page.cells):
             values = cell.content.payload.values
@@ -239,7 +239,7 @@ class Connection:
 
         non-standard method
         """
-        page = self._db.pages[0]
+        page = self._db.root_pages[0]
         assert page.page_type.value == 0x0D  # Table B-Tree Leaf Cell
         for cell_idx, cell in enumerate(page.cells):
             values = cell.content.payload.values
@@ -259,7 +259,7 @@ class Connection:
         non-standard method
         """
         raise NotImplementedError
-        # TODO parse sql in self._db.pages[0]
+        # TODO parse sql in self._db.root_pages[0]
 
     def _rootpage_num(self, table):
         """
@@ -267,7 +267,7 @@ class Connection:
 
         non-standard method
         """
-        page = self._db.pages[0]
+        page = self._db.root_pages[0]
         assert page.page_type.value == 0x0D  # Table B-Tree Leaf Cell
         for cell_idx, cell in enumerate(page.cells):
             values = cell.content.payload.values
@@ -283,7 +283,7 @@ class Connection:
         """
         page_idx = self._rootpage_num(table) - 1
         assert page_idx != None
-        page = self._db.pages[page_idx]
+        page = self._db.pages[page_idx] # FIXME random access
         assert page.page_type.value == 0x0D  # Table B-Tree Leaf Cell
         while page:
             for cell_idx, cell in enumerate(page.cells):
@@ -322,7 +322,7 @@ class Connection:
         """
         page_idx = self._rootpage_num(table) - 1
         assert page_idx != None
-        page = self._db.pages[page_idx]
+        page = self._db.pages[page_idx] # FIXME random access
         assert page.page_type.value == 0x0D  # Table B-Tree Leaf Cell
         while page:
             page_position = page_idx * self._db.header.page_size

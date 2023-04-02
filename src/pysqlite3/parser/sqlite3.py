@@ -4,6 +4,7 @@ import kaitaistruct
 from kaitaistruct import KaitaiStruct, KaitaiStream, BytesIO
 from enum import Enum
 
+#import traceback
 
 if getattr(kaitaistruct, "API_VERSION", (0, 9)) < (0, 9):
     raise Exception(
@@ -120,21 +121,26 @@ class Sqlite3(KaitaiStruct):
                     self._io, self, self._root
                 )
 
-            print() # debug
+            #print() # debug
+            #print("BtreePage._read") # debug
+            #traceback.print_stack() # debug
             self.page_type = KaitaiStream.resolve_enum(
                 Sqlite3.BtreePageType, self._io.read_u1()
             )
-            print("BtreePage.page_type", self.page_type) # debug
+            #print("BtreePage.page_type", self.page_type) # debug
+            #print("BtreePage.page_type.value", self.page_type.value) # debug
+            #assert self.page_type.value in {0x02, 0x05, 0x0a, 0x0d}
+            assert type(self.page_type) != int, f"invalid page type: {self.page_type}"
             self.first_freeblock = self._io.read_u2be()
             self.cell_count = self._io.read_u2be()
-            print("BtreePage.cell_count", self.cell_count) # debug
+            #print("BtreePage.cell_count", self.cell_count) # debug
             self.cell_content_area_start_raw = self._io.read_u2be()
             self.num_frag_free_bytes = self._io.read_u1()
             if (self.page_type == Sqlite3.BtreePageType.index_interior) or (
                 self.page_type == Sqlite3.BtreePageType.table_interior
             ):
                 self.right_ptr = Sqlite3.BtreePagePointer(self._io, self, self._root)
-                print("BtreePage.right_ptr", self.right_ptr) # debug
+                #print("BtreePage.right_ptr", self.right_ptr) # debug
 
             self.cells = []
             #print("BtreePage.cells +=", end="") # debug
@@ -817,12 +823,64 @@ class Sqlite3(KaitaiStruct):
     def pages(self):
         if hasattr(self, "_m_pages"):
             return self._m_pages
+        class PagesList:
+            def __init__(self, root):
+                self.root = root
+            def __len__(self):
+                return self.root.header.page_count
+            def __getitem__(self, i): # idx is 0-based
+                _pos = self.root._io.pos()
+
+                if i < 0: # -1 means last page, etc
+                    i = self.root.header.page_count + i # pysqlite3.parser.sqlite3.Sqlite3.BtreePage
+
+                # TODO LRU cache with sparse array
+                # note: LRU cache does not give pointer equality
+                # but equality check is trivial: page_a.page_number == page_b.page_number
+                self.root._io.seek(i * self.root.header.page_size)
+
+                assert 0 <= i and i < self.root.header.page_count, f"page index is out of range: {i} is not in (0, {self.root.header.page_count - 1})"
+
+                self.root._io.seek(i * self.root.header.page_size)
+                _on = (
+                    0
+                    if i == self.root.header.lock_byte_page_index
+                    else (
+                        1
+                        if (
+                            (i >= self.root.header.first_ptrmap_page_index)
+                            and (i <= self.root.header.last_ptrmap_page_index)
+                        )
+                        else 2
+                    )
+                )
+                if _on == 0:
+                    page = Sqlite3.LockBytePage((i + 1), self.root._io, self, self.root._root) # throws on invalid page type
+                elif _on == 1:
+                    page = Sqlite3.PtrmapPage((i + 1), self.root._io, self, self.root._root) # throws on invalid page type
+                elif _on == 2:
+                    page = Sqlite3.BtreePage((i + 1), self.root._io, self, self.root._root) # throws on invalid page type
+                else:
+                    raise Exception(f"unknown page type at page index {i}")
+
+                self.root._io.seek(_pos)
+                return page
+
+        self._m_pages = PagesList(self)
+        return getattr(self, "_m_pages", None)
+
+    @property
+    def root_pages(self):
+        if hasattr(self, "_m_root_pages"):
+            return self._m_root_pages
 
         _pos = self._io.pos()
-        self._io.seek(0)
-        self._raw__m_pages = []
-        self._m_pages = []
-        for i in range(self.header.page_count):
+        self._raw__m_root_pages = []
+        self._m_root_pages = []
+        i = 0
+        i_max = self.header.page_count - 1
+        while i < i_max: # `i == i_max` means "end of file"
+            self._io.seek(i * self.header.page_size)
             _on = (
                 0
                 if i == self.header.lock_byte_page_index
@@ -835,26 +893,23 @@ class Sqlite3(KaitaiStruct):
                     else 2
                 )
             )
-            if _on == 0:
-                self._raw__m_pages.append(self._io.read_bytes(self.header.page_size))
-                _io__raw__m_pages = KaitaiStream(BytesIO(self._raw__m_pages[i]))
-                self._m_pages.append(
-                    Sqlite3.LockBytePage((i + 1), _io__raw__m_pages, self, self._root)
-                )
-            elif _on == 1:
-                self._raw__m_pages.append(self._io.read_bytes(self.header.page_size))
-                _io__raw__m_pages = KaitaiStream(BytesIO(self._raw__m_pages[i]))
-                self._m_pages.append(
-                    Sqlite3.PtrmapPage((i + 1), _io__raw__m_pages, self, self._root)
-                )
-            elif _on == 2:
-                self._raw__m_pages.append(self._io.read_bytes(self.header.page_size))
-                _io__raw__m_pages = KaitaiStream(BytesIO(self._raw__m_pages[i]))
-                self._m_pages.append(
-                    Sqlite3.BtreePage((i + 1), _io__raw__m_pages, self, self._root)
-                )
+            assert _on == 2
+            self._m_root_pages.append(
+                Sqlite3.BtreePage((i + 1), self._io, self, self._root)
+            )
+
+            page = self._m_root_pages[-1]
+
+            # FIXME page.right_ptr should be None by default
+            # `if page.right_ptr:` is faster than `if hasattr(page, "right_ptr"):`
+            # generally, struct layout should be constant = all fields are always present
+            # because this allows for memory optimization
+
+            # go to next root page
+            if hasattr(page, "right_ptr"):
+                i = page.right_ptr.page_number - 1
             else:
-                self._m_pages.append(self._io.read_bytes(self.header.page_size))
+                i = i + 1
 
         self._io.seek(_pos)
-        return getattr(self, "_m_pages", None)
+        return getattr(self, "_m_root_pages", None)

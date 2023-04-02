@@ -48,6 +48,16 @@ def test_connection():
     print(f"first_ptrmap_page_index: {con._db.header.first_ptrmap_page_index}")
     print(f"last_ptrmap_page_index: {con._db.header.last_ptrmap_page_index}")
 
+    print(f"con._db.pages =", con._db.pages)
+    print(f"len(con._db.pages) =", len(con._db.pages))
+    print(f"con._db.pages[0] =", con._db.pages[0])
+    print(f"con._db.pages[0].page_number =", con._db.pages[0].page_number)
+    print(f"con._db.pages[len-1] =", con._db.pages[len(con._db.pages)-1])
+    print(f"con._db.pages[len-1].page_number =", con._db.pages[len(con._db.pages)-1].page_number)
+    print(f"con._db.pages[-1] =", con._db.pages[-1])
+    print(f"con._db.pages[-1].page_number =", con._db.pages[-1].page_number)
+    print(f"con._db.root_pages =", con._db.root_pages)
+
     print("tables =", con._tables)
 
     print("con._columns")
