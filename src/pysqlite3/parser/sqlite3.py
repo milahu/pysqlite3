@@ -69,38 +69,10 @@ class Sqlite3(KaitaiStruct):
         string_utf16_le = 14
         string_utf16_be = 15
 
-    class PagesList:
-        def __init__(self, root):
-            self.root = root
-
-        def __len__(self):
-            return self.root.header.num_pages
-
-        def __getitem__(self, i):  # i is 0-based
-            if i < 0:  # -1 means last page, etc
-                i = self.root.header.num_pages + i
-
-            assert (
-                0 <= i and i < self.root.header.num_pages
-            ), f"page index is out of range: {i} is not in (0, {self.root.header.num_pages - 1})"
-
-            # TODO LRU cache with sparse array?
-            # note: LRU cache does not give pointer equality
-            # but equality check is trivial: page_a.page_number == page_b.page_number
-
-            _pos = self.root._io.pos()
-            self.root._io.seek(i * self.root.header.page_size)
-            page = Sqlite3.Page(
-                (i + 1), (self.root.header.page_size * i), self.root._io, self.root, self.root._root
-            )
-            self.root._io.seek(_pos)
-            return page
-
     def __init__(self, _io, _parent=None, _root=None):
         self._io = _io
         self._parent = _parent
         self._root = _root if _root else self
-        self.pages = Sqlite3.PagesList(self)
         self._read()
 
     def _read(self):
@@ -343,68 +315,6 @@ class Sqlite3(KaitaiStruct):
             for i in range(self.num_free_pages):
                 self.free_pages.append(self._io.read_u4be())
 
-    class Page(KaitaiStruct):
-        def __init__(self, page_number, ofs_body, _io, _parent=None, _root=None):
-            self._io = _io
-            self._parent = _parent
-            self._root = _root if _root else self
-            self.page_number = page_number
-            self.ofs_body = ofs_body
-            self._read()
-
-        def _read(self):
-            pass
-
-        @property
-        def page_index(self):
-            if hasattr(self, "_m_page_index"):
-                return self._m_page_index
-
-            self._m_page_index = self.page_number - 1
-            return getattr(self, "_m_page_index", None)
-
-        @property
-        def body(self):
-            if hasattr(self, "_m_body"):
-                return self._m_body
-
-            _pos = self._io.pos()
-            self._io.seek(self.ofs_body)
-            _on = (
-                0
-                if self.page_index == self._root.header.idx_lock_byte_page
-                else (
-                    1
-                    if (
-                        (self.page_index >= self._root.header.idx_first_ptrmap_page)
-                        and (self.page_index <= self._root.header.idx_last_ptrmap_page)
-                    )
-                    else 2
-                )
-            )
-            if _on == 0:
-                self._raw__m_body = self._io.read_bytes(self._root.header.page_size)
-                _io__raw__m_body = KaitaiStream(BytesIO(self._raw__m_body))
-                self._m_body = Sqlite3.LockBytePage(
-                    self.page_number, _io__raw__m_body, self, self._root
-                )
-            elif _on == 1:
-                self._raw__m_body = self._io.read_bytes(self._root.header.page_size)
-                _io__raw__m_body = KaitaiStream(BytesIO(self._raw__m_body))
-                self._m_body = Sqlite3.PtrmapPage(
-                    self.page_number, _io__raw__m_body, self, self._root
-                )
-            elif _on == 2:
-                self._raw__m_body = self._io.read_bytes(self._root.header.page_size)
-                _io__raw__m_body = KaitaiStream(BytesIO(self._raw__m_body))
-                self._m_body = Sqlite3.BtreePage(
-                    self.page_number, _io__raw__m_body, self, self._root
-                )
-            else:
-                self._m_body = self._io.read_bytes(self._root.header.page_size)
-            self._io.seek(_pos)
-            return getattr(self, "_m_body", None)
-
     class PtrmapPage(KaitaiStruct):
         def __init__(self, page_number, _io, _parent=None, _root=None):
             self._io = _io
@@ -540,14 +450,18 @@ class Sqlite3(KaitaiStruct):
             return getattr(self, "_m_type", None)
 
         @property
-        def variable_size(self):
-            if hasattr(self, "_m_variable_size"):
-                return self._m_variable_size
+        def len_blob_string(self):
+            if hasattr(self, "_m_len_blob_string"):
+                return self._m_len_blob_string
 
             if self.raw_value.value >= 12:
-                self._m_variable_size = (self.raw_value.value - 12) // 2
+                self._m_len_blob_string = (
+                    (self.raw_value.value - 12) // 2
+                    if (self.raw_value.value % 2) == 0
+                    else (self.raw_value.value - 13) // 2
+                )
 
-            return getattr(self, "_m_variable_size", None)
+            return getattr(self, "_m_len_blob_string", None)
 
     class IndexLeafCell(KaitaiStruct):
         """
@@ -895,11 +809,11 @@ class Sqlite3(KaitaiStruct):
                 self.value = Sqlite3.NullValue(self._io, self, self._root)
             elif _on == Sqlite3.Serial.blob:
                 self.value = Sqlite3.Blob(
-                    self.serial_type.variable_size, self._io, self, self._root
+                    self.serial_type.len_blob_string, self._io, self, self._root
                 )
             elif _on == Sqlite3.Serial.string_utf8:
                 self.value = Sqlite3.StringUtf8(
-                    self.serial_type.variable_size, self._io, self, self._root
+                    self.serial_type.len_blob_string, self._io, self, self._root
                 )
             elif _on == Sqlite3.Serial.two_comp_16:
                 self.value = self._io.read_s2be()
@@ -909,7 +823,7 @@ class Sqlite3(KaitaiStruct):
                 self.value = self._io.read_s1()
             elif _on == Sqlite3.Serial.string_utf16_be:
                 self.value = Sqlite3.StringUtf16Be(
-                    self.serial_type.variable_size, self._io, self, self._root
+                    self.serial_type.len_blob_string, self._io, self, self._root
                 )
             elif _on == Sqlite3.Serial.two_comp_48:
                 self.value = self._io.read_bits_int_be(48)
@@ -917,7 +831,7 @@ class Sqlite3(KaitaiStruct):
                 self.value = Sqlite3.Int1(self._io, self, self._root)
             elif _on == Sqlite3.Serial.string_utf16_le:
                 self.value = Sqlite3.StringUtf16Le(
-                    self.serial_type.variable_size, self._io, self, self._root
+                    self.serial_type.len_blob_string, self._io, self, self._root
                 )
             elif _on == Sqlite3.Serial.two_comp_32:
                 self.value = self._io.read_s4be()
@@ -961,46 +875,47 @@ class Sqlite3(KaitaiStruct):
                 )
 
     @property
-    def root_pages(self):
-        if hasattr(self, "_m_root_pages"):
-            return self._m_root_pages
+    def pages(self):
+        if hasattr(self, "_m_pages"):
+            return self._m_pages
 
         _pos = self._io.pos()
-        self._raw__m_root_pages = []
-        self._m_root_pages = []
-        i = 0
-        i_max = self.header.num_pages - 1
-        while i < i_max:  # `i == i_max` means "end of file"
-            self._io.seek(i * self.header.page_size)
+        self._io.seek(0)
+        self._raw__m_pages = []
+        self._m_pages = []
+        for i in range(self.header.num_pages):
             _on = (
                 0
-                if i == self.header.lock_byte_page_index
+                if i == self.header.idx_lock_byte_page
                 else (
                     1
                     if (
-                        (i >= self.header.first_ptrmap_page_index)
-                        and (i <= self.header.last_ptrmap_page_index)
+                        (i >= self.header.idx_first_ptrmap_page)
+                        and (i <= self.header.idx_last_ptrmap_page)
                     )
                     else 2
                 )
             )
-            assert _on == 2
-            self._m_root_pages.append(
-                Sqlite3.BtreePage((i + 1), self._io, self, self._root)
-            )
-
-            page = self._m_root_pages[-1]
-
-            # FIXME page.right_ptr should be None by default
-            # `if page.right_ptr:` is faster than `if hasattr(page, "right_ptr"):`
-            # generally, struct layout should be constant = all fields are always present
-            # because this allows for memory optimization
-
-            # go to next root page
-            if hasattr(page, "right_ptr"):
-                i = page.right_ptr.page_number - 1
+            if _on == 0:
+                self._raw__m_pages.append(self._io.read_bytes(self.header.page_size))
+                _io__raw__m_pages = KaitaiStream(BytesIO(self._raw__m_pages[i]))
+                self._m_pages.append(
+                    Sqlite3.LockBytePage((i + 1), _io__raw__m_pages, self, self._root)
+                )
+            elif _on == 1:
+                self._raw__m_pages.append(self._io.read_bytes(self.header.page_size))
+                _io__raw__m_pages = KaitaiStream(BytesIO(self._raw__m_pages[i]))
+                self._m_pages.append(
+                    Sqlite3.PtrmapPage((i + 1), _io__raw__m_pages, self, self._root)
+                )
+            elif _on == 2:
+                self._raw__m_pages.append(self._io.read_bytes(self.header.page_size))
+                _io__raw__m_pages = KaitaiStream(BytesIO(self._raw__m_pages[i]))
+                self._m_pages.append(
+                    Sqlite3.BtreePage((i + 1), _io__raw__m_pages, self, self._root)
+                )
             else:
-                i = i + 1
+                self._m_pages.append(self._io.read_bytes(self.header.page_size))
 
         self._io.seek(_pos)
-        return getattr(self, "_m_root_pages", None)
+        return getattr(self, "_m_pages", None)
