@@ -394,19 +394,46 @@ class Connection:
         page_idx = self._rootpage_num(table) - 1
         assert page_idx != None
         page = self._db.pages[page_idx] # FIXME random access
-        assert page.page_type.value == 0x0D  # Table B-Tree Leaf Cell
+        #assert page.page_type.value == 0x0D  # Table B-Tree Leaf Cell
         while page:
             page_position = page_idx * self._db.header.page_size
-            for cell_idx, cell in enumerate(page.cells):
-                locations = []
-                # TODO why +5? header of cell? always 5?
-                last_value_end = page_position + cell.content_offset + 5
-                for value in cell.content.payload.values:
-                    start = last_value_end
-                    size = self._size_of_raw_type(value.serial_type.code.value)
-                    locations.append((start, size))
-                    last_value_end += size
-                yield locations
+
+            if page.page_type.value == 0x05:
+                for cell_idx, cell in enumerate(page.cells):
+                    print()
+                    print("con._row_locations: page.page_number", page.page_number)
+                    # cell.content is TableInteriorCell
+                    # Interior pages of table b-trees have no payload
+                    #print("con._row_locations: cell.content", cell.content, dir(cell.content))
+                    # BtreePagePointer
+                    #print("con._row_locations: cell.content.left_child_page", cell.content.left_child_page, dir(cell.content.left_child_page))
+                    # int
+                    print("con._row_locations: cell.content.left_child_page.page_number", cell.content.left_child_page.page_number)
+                    # int
+                    print("con._row_locations: cell.content.row_id.value", cell.content.row_id.value)
+                    #raise NotImplementedError
+                    # go to next page
+                    page_idx = cell.content.left_child_page.page_number - 1
+                    if page_idx >= self._db.header.page_count: # done last page
+                        page = None
+                        break
+                    # TODO this makes sense only for the last cell
+                    # or is there always only one cell?
+                    assert cell_idx == 0
+                    page = self._db.pages[page_idx]
+
+            elif page.page_type.value == 0x0D:
+                for cell_idx, cell in enumerate(page.cells):
+                    locations = []
+                    # TODO why +5? header of cell? always 5?
+                    last_value_end = page_position + cell.content_offset + 5
+                    for value in cell.content.payload.values:
+                        start = last_value_end
+                        size = self._size_of_raw_type(value.serial_type.code.value)
+                        locations.append((start, size))
+                        last_value_end += size
+                    yield locations
+
             page = None
             page_idx = None
             # TODO read more pages when necessary
