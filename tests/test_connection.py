@@ -33,9 +33,8 @@ def create_test_db(database="test.db"):
     con.close()
 
 
-def test_connection():
-    create_test_db()
-
+def zzz_test_connection():
+    create_test_db("test.db")
     con = pysqlite3.connect("test.db")
     # con = pysqlite3.connect(":memory:")
 
@@ -49,6 +48,8 @@ def test_connection():
     print(f"idx_last_ptrmap_page: {con._db.header.idx_last_ptrmap_page}")
 
     print(f"con._db.pages =", con._db.pages)
+    """
+    # db.pages was removed for lazy parsing
     print(f"len(con._db.pages) =", len(con._db.pages))
     print(f"con._db.pages[0] =", con._db.pages[0])
     print(f"con._db.pages[0].page_number =", con._db.pages[0].page_number)
@@ -56,7 +57,10 @@ def test_connection():
     print(f"con._db.pages[len-1].page_number =", con._db.pages[len(con._db.pages)-1].page_number)
     print(f"con._db.pages[-1] =", con._db.pages[-1])
     print(f"con._db.pages[-1].page_number =", con._db.pages[-1].page_number)
+    """
+
     print(f"con._root_page_numbers =", con._root_page_numbers)
+    print(f"con._root_page_numbers =", list(con._root_page_numbers))
 
     print("tables =", con._tables)
 

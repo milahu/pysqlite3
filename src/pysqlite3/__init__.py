@@ -11,6 +11,9 @@ from .prepare_protocol import PrepareProtocol
 # from _sqlite3 import *
 # from _sqlite3 import _deprecated_version
 
+from .parser import sqlite3 as _parser
+from .parser import sqlite3_helpers as _parser_helpers
+
 
 def connect(
     database,
