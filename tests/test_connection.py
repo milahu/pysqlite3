@@ -1,5 +1,6 @@
 import os
 import sqlite3
+import hashlib
 
 import pysqlite3
 
@@ -8,12 +9,23 @@ def create_test_db(database="test.db"):
     """
     use the native sqlite3 module to create the test database
     """
+    print()
     try:
         os.unlink(database)
     except FileNotFoundError:
         pass
+    # problem: we cannot set the page size in python's sqlite interface
+    # workaround: use the native sqlite CLI tool to create the database
     con = sqlite3.connect(database)
     cur = con.cursor()
+
+    # page_size must be one of: 512, 1024, 2048, 4096, 8192, 16384, 32768, 65536 bytes.
+    # use smallest page size to maximize fragmentation of blobs across pages
+    # fragmented data is harder to parse
+    # https://www.sqlite.org/pragma.html#pragma_page_size
+    # https://www.oreilly.com/library/view/using-sqlite/9781449394592/re194.html
+    page_size = 512
+    cur.executescript(f"PRAGMA page_size = {page_size}; VACUUM;")
 
     cur.execute("CREATE TABLE IF NOT EXISTS lang(name, first_appeared)")
     data = [
@@ -29,14 +41,36 @@ def create_test_db(database="test.db"):
         data.append((f"row{i}_column1", f"row{i}_column2"))
     cur.executemany("INSERT INTO table2(column1, column2) VALUES(?, ?)", data)
 
+    # TODO set column types
+    cur.execute("CREATE TABLE IF NOT EXISTS blob_table(id INTEGER, md5 TEXT, value BLOB)")
+    data = []
+    # 7 keys per page. 21 keys = 3 pages
+    num_rows = 255
+    blob_size = page_size # always overflow
+    #blob_size = page_size // 2 # always fit on page
+    for i in range(1, num_rows + 1):
+        _byte = i.to_bytes(1, "big")
+        #print(f"inserting into blob_table: id={i} value[0]=0x{_byte.hex()}")
+        value = blob_size * _byte
+        md5 = hashlib.md5(value).hexdigest()
+        data = (i, md5, value)
+        cur.execute("INSERT INTO blob_table(id, md5, value) VALUES(?, ?, ?)", data)
+    res = cur.execute("SELECT count() FROM blob_table")
+    assert res.fetchone()[0] == num_rows
+
     con.commit()
     con.close()
 
 
-def zzz_test_connection():
-    create_test_db("test.db")
-    con = pysqlite3.connect("test.db")
+def test_connection():
+    database = "test.db"
+    create_test_db(database)
+    con = pysqlite3.connect(database)
     # con = pysqlite3.connect(":memory:")
+
+    # ro: open in read-only mode
+    sqlite_con = sqlite3.connect(f"file:{database}?mode=ro", uri=True)
+    sqlite_cur = sqlite_con.cursor()
 
     print(f"page size: {con._db.header.page_size} bytes")
     print(
@@ -59,9 +93,6 @@ def zzz_test_connection():
     print(f"con._db.pages[-1].page_number =", con._db.pages[-1].page_number)
     """
 
-    print(f"con._root_page_numbers =", con._root_page_numbers)
-    print(f"con._root_page_numbers =", list(con._root_page_numbers))
-
     print("tables =", con._tables)
 
     print("con._columns")
@@ -71,10 +102,31 @@ def zzz_test_connection():
         except NotImplementedError as err:
             print("ignoring NotImplementedError:", err)
 
-    print("con._row_values")
+    def format_values(values):
+        result = []
+        max_len = 50
+        for val in values:
+            s = repr(val)
+            if len(s) > max_len:
+                s = s[0:max_len] + "..."
+            result.append(s)
+        return "[" + ", ".join(result) + "]"
+
+    print("con._table_values")
     for table in con._tables:
-        for row_id, values in enumerate(con._row_values(table)):
-            print(f"table {table}: row {row_id + 1} =", values)
+        print(f"con._table_values(table={repr(table)})")
+        num_rows = 0
+        for row_id, values in enumerate(con._table_values(table)):
+            num_rows += 1
+            print(f"table {table}: row {row_id + 1} =", format_values(values))
+            if table == "blob_table":
+                # verify md5
+                expected_md5 = hashlib.md5(values[2]).hexdigest()
+                assert values[1] == expected_md5
+        num_rows_expected = sqlite_cur.execute(f"SELECT count() FROM {table}").fetchone()[0]
+        assert num_rows == num_rows_expected, f"num_rows: expected {num_rows_expected}, actual {num_rows}"
+
+    raise NotImplementedError
 
     print("con._row_locations")
     for table in con._tables:

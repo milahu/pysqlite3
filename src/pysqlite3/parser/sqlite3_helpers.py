@@ -10,6 +10,7 @@ class PagesList:
     """
     def __init__(self, db):
         self.db = db
+        self._debug = False
 
     def __len__(self):
         return self.db.header.num_pages
@@ -18,7 +19,8 @@ class PagesList:
         """
         lazy getter for db.pages[page_idx]
         """
-        print(f"PagesList.__getitem__({page_idx})")
+        if self._debug:
+            print(f"PagesList.__getitem__({page_idx})")
         db = self.db
         header = db.header
         if page_idx < 0:  # -1 means last page, etc

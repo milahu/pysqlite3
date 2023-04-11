@@ -355,157 +355,167 @@ class Connection:
         get all values of a table
 
         non-standard method
+
+        based on https://www.geeksforgeeks.org/inorder-tree-traversal-without-recursion/
+        see also docs/binary-tree-leaf-nodes.py
         """
+        _debug = False
         root_page_idx = self._rootpage_num(table) - 1
         assert root_page_idx != None
-        print("con._table_values: table", table)
-        print("con._table_values: root_page_idx", root_page_idx)
+        if _debug:
+            print(f"con._table_values({table}): root_page_idx", root_page_idx)
         #assert page.page_type.value == 0x0D, f"expected page type 0x0D, actual 0x{page.page_type.value:02X}"
-
-        # visit all values in order:
-        #
-        # - go to the leftmost leaf node, loop its values
-        # - while the right-pointer is not null:
-        #   - follow the right-pointer to the next leaf node, loop its values
-
-        interior_page_stack = []
-        interior_cell_idx_stack = []
 
         root_page = self._db.pages[root_page_idx]
 
-        if root_page.page_type.value == 0x0D: # leaf page
-            # tree is empty
-            return
+        page = root_page
+        page_stack = []
 
-        interior_page_stack.append(root_page) # first page
-        interior_cell_idx_stack.append(0) # first cell
+        while page or page_stack:
 
-        while interior_page_stack:
-
-            interior_page = interior_page_stack[-1]
-            interior_cell_idx = interior_cell_idx_stack[-1]
-
-            cell_pointer = interior_page.cell_pointers[interior_cell_idx]
-            page_idx = cell_pointer.content.left_child_page_pointer.page_number - 1
-            page = self._db.pages[page_idx]
-
-            # Left: Recursively traverse the current node's left subtree.
-            while page.page_type.value == 0x05: # interior page
-                interior_page = page
-                interior_page_stack.append(interior_page)
-                interior_cell_idx = 0 # first cell
-                interior_cell_idx_stack.append(interior_cell_idx)
-
-                cell_pointer = interior_page.cell_pointers[interior_cell_idx]
+            if page:
+                page_stack.append(page)
+                #page = page.left # go left. page.left can be None
+                if page.page_type.value == 0x0D: # leaf page
+                    # leaf page has no left child -> continue with page_stack
+                    if _debug:
+                        print(f"con._table_values({table}): page idx {page.page_number - 1} is leaf page -> continue with page_stack")
+                    page = None
+                    continue
+                assert page.page_type.value == 0x05 # interior page
+                if _debug:
+                    print(f"con._table_values({table}): page idx {page.page_number - 1} is interior page -> go left")
+                # store the current cell index in the page object
+                # to go right, increase the cell index
+                # the rightmost page is NOT stored in the interior_page.cell_pointers array
+                # but is stored in interior_page.rightmost_page_pointer
+                page._interior_cell_idx = 0 # start at the leftmost child
+                cell_pointer = page.cell_pointers[page._interior_cell_idx]
+                if _debug:
+                    print(f"con._table_values({table}): interior cell {page._interior_cell_idx}: cell_pointer.content", cell_pointer.content, dir(cell_pointer.content))
                 page_idx = cell_pointer.content.left_child_page_pointer.page_number - 1
                 page = self._db.pages[page_idx]
+                continue
 
-            # Node: Visit the current node.
-            # loop cells, yield all values
-            assert page.page_type.value == 0x0D # leaf page
-            leaf_page = page
-            #print(f"interior cell {interior_cell_idx}: con._table_values: page.num_cell_pointers", page.num_cell_pointers)
-            for cell_pointer_idx, cell_pointer in enumerate(leaf_page.cell_pointers):
-                # cell_pointer.content is TableLeafCell
-                #print(f"interior cell {interior_cell_idx}: cell {cell_pointer_idx}: cell_pointer.content", cell_pointer.content, dir(cell_pointer.content))
-                row_id = cell_pointer.content.row_id.value
-                values = []
-                # TODO memleak? cell_pointer.content
-                if hasattr(cell_pointer.content.payload, "values"):
-                    # non-overflow record
-                    for value in cell_pointer.content.payload.values:
-                        if value.serial_type.type.value == 0:
-                            # null
-                            # TODO verify. does "null" always mean row_id?
-                            values.append(row_id)
-                        elif value.serial_type.type.value >= 12:
-                            # blob or string
-                            values.append(value.value.value)
-                        else:
-                            # int or float or bool
-                            values.append(value.value)
-                    yield values
-                else:
-                    # overflow record
-                    assert hasattr(cell_pointer.content.payload, "inline_payload")
-                    # payload is overflow_record
-                    # must be parsed manually because paging
-                    if _debug:
-                        print(f"page.body.cell_pointers[{cell_pointer_idx}].content.payload.inline_payload_size", cell.content.payload.inline_payload_size)
-                    # inline_payload: header + body
-                    # we must parse this manually because paging
-                    con = self
-                    db = con._db
-                    payload_reader = parser_sqlite3_helpers.PayloadReader(db, leaf_page, cell_pointer_idx)
-                    inline_payload = cell_pointer.content.payload.inline_payload
-                    #payload_io = parser_sqlite3.KaitaiStream(parser_sqlite3.BytesIO(inline_payload))
-                    payload_io = parser_sqlite3.KaitaiStream(payload_reader)
-                    header_size = parser_sqlite3.vlq_base128_be.VlqBase128Be(payload_io)
-                    if _debug:
-                        # header size is part of the header
-                        header_positions = payload_reader._last_read_positions
-                    # TODO avoid buffering. call RecordHeader with (io, size), so it can read to "eos" (end of stream)
-                    _raw_header = payload_io.read_bytes((header_size.value - 1))
-                    _raw_header_io = parser_sqlite3.KaitaiStream(parser_sqlite3.BytesIO(_raw_header))
-                    #print("raw payload header", _raw_header)
-                    header = parser_sqlite3.Sqlite3.RecordHeader(_raw_header_io, db, db._root)
-                    if _debug:
-                        header_positions += payload_reader._last_read_positions
-                        print("header_positions", header_positions)
-                        #print("payload header", header, dir(header))
-                        #print("payload header.value_types", header.value_types, dir(header.value_types))
-                    #value_offset = header_size.value
+            page = page_stack.pop() # go up
+
+            #if is_leaf(page):
+            #    print(page.value, end=" ")
+            if page.page_type.value == 0x0D: # leaf page
+                if _debug: print(f"con._table_values({table}): page idx {page.page_number - 1} is leaf page -> loop values")
+                # loop cells, yield all values
+                #if _debug: print(f"con._table_values({table}): leaf page idx", page.page_number - 1)
+                for cell_pointer_idx, cell_pointer in enumerate(page.cell_pointers):
+                    # cell_pointer.content is TableLeafCell
+                    #if _debug: print(f"con._table_values({table}): leaf page idx", page.page_number - 1, "+ cell_pointer_idx", cell_pointer_idx)
+                    row_id = cell_pointer.content.row_id.value
                     values = []
-                    for value_type_idx, value_type in enumerate(header.value_types):
-                        # value_type is SerialType
-                        if _debug:
-                            #print(f"payload header.value_types[{value_type_idx}]", value_type, dir(value_type))
-                            #print(f"payload header.value_types[{value_type_idx}].raw_value.value", value_type.raw_value.value)
-                            print(f"payload header.value_types[{value_type_idx}].type", value_type.type)
-                        value_size = 0
-                        size_of_type = [0, 1, 2, 3, 4, 6, 8, 8, 0, 0]
-                        if value_type.raw_value.value >= 12:
-                            value_size = value_type.len_blob_string
-                        else:
-                            value_size = size_of_type[value_type.raw_value.value]
-                        if _debug:
-                            print(f"payload header.value_types[{value_type_idx}] value_size", value_size)
-                        #value_bytes = payload_io.read_bytes(value_size)
-                        #result.append(value_bytes)
-                        value = parser_sqlite3.Sqlite3.Value(value_type, payload_io, db, db._root)
-                        if value.serial_type.type.value == 0:
-                            # null
-                            # TODO verify. does "null" always mean row_id?
-                            values.append(row_id)
-                        elif value.serial_type.type.value >= 12:
-                            # blob or string
-                            values.append(value.value.value)
-                        else:
-                            # int or float or bool
-                            values.append(value.value)
-                        if _debug:
-                            value_positions = payload_reader._last_read_positions
-                            print("value_positions", value_positions)
+                    # TODO memleak in cell_pointer.content? avoid caching in the kaitai sqlite3 parser
+                    if hasattr(cell_pointer.content.payload, "values"):
+                        # non-overflow record
+                        for value in cell_pointer.content.payload.values:
+                            # TODO refactor/sync branches: if value.serial_type.type.value
+                            if value.serial_type.type.value == 0: # null value
+                                # TODO verify. does "null" always mean row_id?
+                                values.append(row_id)
+                            elif value.serial_type.type.value >= 8:
+                                # number_0 or number_1 or blob or string
+                                values.append(value.value.value)
+                            else: # int or float or bool
+                                values.append(value.value)
+                        yield values
+                        #yield tuple(values) # waste of time?
+                    else:
+                        # overflow record
+                        assert hasattr(cell_pointer.content.payload, "inline_payload")
+                        # payload is overflow_record
+                        # must be parsed manually because paging
+                        #if _debug: print(f"con._table_values({table}): page.body.cell_pointers[{cell_pointer_idx}].content.payload.inline_payload_size", cell_pointer.content.payload.inline_payload_size)
+                        # inline_payload: header + body
+                        # we must parse this manually because paging
+                        con = self
+                        db = con._db
+                        payload_reader = parser_sqlite3_helpers.PayloadReader(db, page, cell_pointer_idx)
+                        inline_payload = cell_pointer.content.payload.inline_payload
+                        payload_io = parser_sqlite3.KaitaiStream(payload_reader)
+                        header_size = parser_sqlite3.vlq_base128_be.VlqBase128Be(payload_io)
+                        # header size is part of the header
+                        #header_positions = payload_reader._last_read_positions
+                        # TODO avoid buffering. call RecordHeader with (io, size), so it can read to "eos" (end of stream)
+                        _raw_header = payload_io.read_bytes((header_size.value - 1))
+                        _raw_header_io = parser_sqlite3.KaitaiStream(parser_sqlite3.BytesIO(_raw_header))
+                        #print(f"con._table_values({table}): raw payload header", _raw_header)
+                        header = parser_sqlite3.Sqlite3.RecordHeader(_raw_header_io, db, db._root)
+                        #header_positions += payload_reader._last_read_positions
+                        #if _debug: print(f"con._table_values({table}): header_positions", header_positions)
+                        values = []
+                        for value_type_idx, value_type in enumerate(header.value_types):
+                            #if _debug: print(f"con._table_values({table}): payload header.value_types[{value_type_idx}].type", value_type.type)
+                            #value_size = 0
+                            size_of_type = [0, 1, 2, 3, 4, 6, 8, 8, 0, 0]
+                            if value_type.raw_value.value >= 12:
+                                value_size = value_type.len_blob_string
+                            else:
+                                value_size = size_of_type[value_type.raw_value.value]
+                            if _debug: print(f"con._table_values({table}): payload header.value_types[{value_type_idx}] value_size", value_size)
+                            value = parser_sqlite3.Sqlite3.Value(value_type, payload_io, db, db._root)
+                            # TODO refactor/sync branches: if value.serial_type.type.value
+                            if value.serial_type.type.value == 0: # null value
+                                # TODO verify. does "null" always mean row_id?
+                                values.append(row_id)
+                            elif value.serial_type.type.value >= 8:
+                                # number_0 or number_1 or blob or string
+                                values.append(value.value.value)
+                            else: # int or float or bool
+                                values.append(value.value)
+                            #value_positions = payload_reader._last_read_positions
+                            #if _debug: print(f"con._table_values({table}): value_positions", value_positions)
+                        yield values
+                        #yield tuple(values) # waste of time?
 
-                            print(f"payload values[{value_type_idx}]: {value_bytes[0:100]}...")
-                            print(f"payload values[{value_type_idx}] md5: {hashlib.md5(value_bytes).hexdigest()}")
-                            #value_offset += value_size
-                    yield tuple(values)
-
-            # Right: Recursively traverse the current node's right subtree.
-            all_done = False
-            while interior_cell_idx == interior_page.num_cell_pointers - 1:
-                # cell is rightmost cell -> go up
-                interior_page_stack.pop()
-                interior_cell_idx_stack.pop()
-                if not interior_page_stack:
-                    all_done = True
-                    break # no more parents -> stop traversal
-                interior_page = interior_page_stack[-1]
-                interior_cell_idx = interior_cell_idx_stack[-1]
-            if all_done:
-                break
-            interior_cell_idx_stack[-1] += 1 # go right
+            # go right #2
+            # TODO refactor branches
+            if page.page_type.value == 0x05: # interior page
+                if _debug: print("600 go right from interior page", page)
+                assert page.page_type.value == 0x05 # interior page
+                # go right #2
+                page._interior_cell_idx += 1 # TODO check range
+                if _debug: print(f"600 con._table_values({table}): page idx {page.page_number - 1}: go right to cell idx:", page._interior_cell_idx)
+                cell_pointer = page.cell_pointers[page._interior_cell_idx] # TODO IndexError when out of range
+                if _debug: print(f"600 con._table_values({table}): page idx {page.page_number - 1}: go right to cell_pointer:", cell_pointer)
+                page_idx = cell_pointer.content.left_child_page_pointer.page_number - 1
+                if _debug: print(f"600 con._table_values({table}): page idx {page.page_number - 1}: go right to page_idx:", page_idx)
+                page = self._db.pages[page_idx]
+                if _debug: print(f"600 con._table_values({table}): page idx {page.page_number - 1}: go right to page:", page)
+            else: # leaf page
+                assert page.page_type.value == 0x0D # leaf page
+                if not page_stack:
+                    page = None # no right page
+                    continue
+                if _debug: print("630 page_stack", page_stack)
+                # get the interior page
+                page = page_stack[-1]
+                assert page.page_type.value == 0x05 # interior page
+                if page._interior_cell_idx < len(page.cell_pointers) - 1:
+                    page._interior_cell_idx += 1
+                    if _debug: print(f"630 con._table_values({table}): page idx {page.page_number - 1}: go right to cell idx:", page._interior_cell_idx)
+                    cell_pointer = page.cell_pointers[page._interior_cell_idx]
+                    if _debug: print(f"630 con._table_values({table}): page idx {page.page_number - 1}: go right to cell_pointer:", cell_pointer)
+                    page_idx = cell_pointer.content.left_child_page_pointer.page_number - 1
+                    if _debug: print(f"630 con._table_values({table}): page idx {page.page_number - 1}: go right to page_idx:", page_idx)
+                    page = self._db.pages[page_idx]
+                    if _debug: print(f"630 con._table_values({table}): page idx {page.page_number - 1}: go right to page:", page)
+                # else: cell_idx is out of range, no next cell
+                elif hasattr(page, "rightmost_page_pointer"):
+                    # we have visited all cells of the interior page
+                    # so we remove the interior page from the page stack
+                    page_stack.pop() # go up
+                    if _debug: print(f"con._table_values({table}): page idx {page.page_number - 1}: rightmost_page_pointer.page_number", page.rightmost_page_pointer.page_number)
+                    page_idx = page.rightmost_page_pointer.page_number - 1
+                    page = self._db.pages[page_idx]
+                else:
+                    #page_stack.pop() # ?
+                    page = None # no right page
 
     def _size_of_raw_type(self, raw_type):
         """
