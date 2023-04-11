@@ -58,6 +58,25 @@ def create_test_db(database="test.db"):
     res = cur.execute("SELECT count() FROM blob_table")
     assert res.fetchone()[0] == num_rows
 
+    # insert 10K values to test high trees
+    # high = higher than 2 interior page levels
+    # TODO what is the actual width and height of the tree?
+    table = "blob_table_2"
+    cur.execute(f"CREATE TABLE IF NOT EXISTS {table}(id INTEGER, md5 TEXT, value BLOB)")
+    num_rows = 10 * 1000
+    # TODO align blob_size to usable space to reduce fragmentation
+    blob_size = page_size // 5 # mostly fit on page
+    for i in range(1, num_rows + 1):
+        byte_dec = i % 256
+        byte = byte_dec.to_bytes(1, "big")
+        #print(f"inserting into blob_table: id={i} value[0]=0x{byte.hex()}")
+        value = blob_size * byte
+        md5 = hashlib.md5(value).hexdigest()
+        data = (i, md5, value)
+        cur.execute(f"INSERT INTO {table}(id, md5, value) VALUES(?, ?, ?)", data)
+    res = cur.execute(f"SELECT count() FROM {table}")
+    assert res.fetchone()[0] == num_rows
+
     con.commit()
     con.close()
 
