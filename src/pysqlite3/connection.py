@@ -322,34 +322,6 @@ class Connection:
         for cell in page.cell_pointers:
             yield cell.content.payload.values[3].value
 
-    '''
-    wrong?
-    TODO root page numbers are stored in the database schema?
-    = root page numbers of table-trees and index-trees
-    @property
-    def _root_page_numbers(self):
-        """
-        get the page numbers of all root pages,
-        excluding page 1
-
-        non-standard method
-        """
-        if self._db.header.num_pages == 1:
-            return []
-        i = 1 # page 2
-        i_max = self._db.header.num_pages - 1
-        while i < i_max: # `i == i_max` means "end of file"
-            print("_root_page_numbers: i =", i)
-            page = self._db.pages[i]
-            print("_root_page_numbers: page =", page, dir(page))
-            yield page.page_number
-            # go to next root page
-            if hasattr(page, "rightmost_page_pointer"):
-                i = page.rightmost_page_pointer.page_number - 1
-            else:
-                i = i + 1
-    '''
-
     def _table_values(self, table):
         """
         get all values of a table
