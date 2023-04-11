@@ -1,5 +1,12 @@
 #! /usr/bin/env python3
 
+"""
+get positions of zip files in opensubs.db
+so we can build an external index
+and do a sparse download of the required torrent pieces
+to avoid downloading the full 130GB torrent
+"""
+
 import os, sys
 sys.path.append(os.path.join(os.path.dirname(__file__), "../src"))
 
