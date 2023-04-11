@@ -76,6 +76,9 @@ class Connection:
     _type_blob = 12
     _type_string = 13
 
+    _last_header_positions = []
+    _last_value_positions = []
+
     def __init__(
         self,
         database,
@@ -412,14 +415,14 @@ class Connection:
                         payload_io = parser_sqlite3.KaitaiStream(payload_reader)
                         header_size = parser_sqlite3.vlq_base128_be.VlqBase128Be(payload_io)
                         # header size is part of the header
-                        #header_positions = payload_reader._last_read_positions
+                        self._last_header_positions = payload_reader._last_read_positions
                         # TODO avoid buffering. call RecordHeader with (io, size), so it can read to "eos" (end of stream)
                         _raw_header = payload_io.read_bytes((header_size.value - 1))
                         _raw_header_io = parser_sqlite3.KaitaiStream(parser_sqlite3.BytesIO(_raw_header))
                         #print(f"con._table_values({table}): raw payload header", _raw_header)
                         header = parser_sqlite3.Sqlite3.RecordHeader(_raw_header_io, db, db._root)
-                        #header_positions += payload_reader._last_read_positions
-                        #if _debug: print(f"con._table_values({table}): header_positions", header_positions)
+                        self._last_header_positions += payload_reader._last_read_positions
+                        #if _debug: print(f"con._table_values({table}): header_positions", self._last_header_positions)
                         values = []
                         for value_type_idx, value_type in enumerate(header.value_types):
                             #if _debug: print(f"con._table_values({table}): payload header.value_types[{value_type_idx}].type", value_type.type)
@@ -440,7 +443,7 @@ class Connection:
                                 values.append(value.value.value)
                             else: # int or float or bool
                                 values.append(value.value)
-                            #value_positions = payload_reader._last_read_positions
+                            self._last_value_positions = payload_reader._last_read_positions
                             #if _debug: print(f"con._table_values({table}): value_positions", value_positions)
                         yield values
                         #yield tuple(values) # waste of time?
